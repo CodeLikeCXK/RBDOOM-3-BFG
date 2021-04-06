@@ -65,7 +65,7 @@ void main( PS_IN fragment, out PS_OUT result )
 	const half3 ambientLightVector = half3( 0.5f, 9.5f - 0.385f, 0.8925f );
 	half3 lightVector = normalize( ambientLightVector );
 	half3 diffuseMap = sRGBToLinearRGB( ConvertYCoCgToRGB( YCoCG ) );
-
+	const half roughness = specMapSRGB.r;
 	half3 localNormal;
 	// RB begin
 #if defined(USE_NORMAL_FMT_RGB8)
@@ -89,7 +89,8 @@ void main( PS_IN fragment, out PS_OUT result )
 #else
 	half lambert = ldotN;
 #endif
-
+    
+   float rr = roughness * roughness;
 	const half specularPower = 10.0f;
 	half hDotN = dot3( normalize( fragment.texcoord6.xyz ), localNormal );
 	// RB: added abs
@@ -98,7 +99,19 @@ void main( PS_IN fragment, out PS_OUT result )
 	half3 diffuseColor = diffuseMap * ( rpDiffuseModifier.xyz );
 	half3 specularColor = specMap.xyz * specularContribution * ( rpSpecularModifier.xyz );
 	half3 lightColor = sRGBToLinearRGB( lightProj.xyz * lightFalloff.xyz );
-
-	result.color.xyz = ( diffuseColor + specularColor ) * lightColor * fragment.color.xyz;
+float toonLambert = lambert > 0.0 ? 1.0 : 0.0;
+   if( lambert > 0.5 )
+    {
+        toonLambert = 0.3;
+    }
+    else if( lambert > 0.25 )
+    {
+        toonLambert = 0.2;
+    }
+    else
+    {
+        toonLambert = lambert > 0.0 ? 0.1 : 0.0;
+    }
+	result.color.xyz = ( diffuseColor * toonLambert  + saturate(smoothstep(0.5f-rr,0.5f+rr,specularColor)) ) * lightColor * fragment.color.xyz;
 	result.color.w = 1.0;
 }

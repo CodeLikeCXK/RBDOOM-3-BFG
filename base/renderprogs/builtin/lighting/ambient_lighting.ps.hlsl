@@ -89,6 +89,22 @@ void main( PS_IN fragment, out PS_OUT result )
 	// traditional very dark Lambert light model used in Doom 3
 	float ldotN = dot3( localNormal, lightVector );
 
+
+	half lambert = lerp( ldotN, halfLdotN, 0.5 );
+    float toonLambert = lambert > 0.0 ? 1.0 : 0.0;
+   if( lambert > 0.5 )
+    {
+        toonLambert = 0.3;
+    }
+    else if( lambert > 0.25 )
+    {
+        toonLambert = 0.2;
+    }
+    else
+    {
+        toonLambert = lambert > 0.0 ? 0.1 : 0.0;
+    }
+
 	half3 lightColor = sRGBToLinearRGB( rpAmbientColor.rgb );
 
 	half rim =  1.0f - saturate( hDotN );
@@ -96,7 +112,7 @@ void main( PS_IN fragment, out PS_OUT result )
 	half3 rimColor = sRGBToLinearRGB( half3( 0.125 ) * 1.2 ) * lightColor * pow( rim, rimPower );
 
 	//result.color.rgb = localNormal.xyz * 0.5 + 0.5;
-	result.color.xyz = ( ( diffuseColor + specularColor ) * halfLdotN * lightColor + rimColor ) * fragment.color.rgb;
+	result.color.xyz = ( ( diffuseColor + specularColor ) * toonLambert * lightColor + rimColor ) * fragment.color.rgb;
 	//result.color = ( ( diffuseColor + specularColor ) * halfLdotN * lightColor + rimColor ) * fragment.color.rgba;
 	result.color.w = fragment.color.a;
 }

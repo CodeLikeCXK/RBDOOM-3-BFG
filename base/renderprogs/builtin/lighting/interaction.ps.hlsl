@@ -153,7 +153,8 @@ void main( PS_IN fragment, out PS_OUT result )
 	// disney GGX
 	float D = ( hdotN * hdotN ) * ( rrrr - 1.0 ) + 1.0;
 	float VFapprox = ( ldotH * ldotH ) * ( roughness + 0.5 );
-	half3 specularBRDF = ( rrrr / ( 4.0 * PI * D * D * VFapprox ) ) * ldotN * reflectColor;
+	//half3 specularBRDF = ( rrrr / ( 4.0 * PI * D * D * VFapprox ) ) * ldotN * reflectColor;
+	half3 specularBRDF = ( rrrr / ( 4.0 * PI * D * D * VFapprox ) ) * lambert * reflectColor;
 	//specularBRDF = half3( 0.0 );
 
 #if 0
@@ -165,8 +166,24 @@ void main( PS_IN fragment, out PS_OUT result )
 	//lambert /= PI;
 
 	//half3 diffuseColor = mix( diffuseMap, F0, metal ) * rpDiffuseModifier.xyz;
-	half3 diffuseBRDF = diffuseColor * lambert * ( rpDiffuseModifier.xyz );
+	//original
+	//half3 diffuseBRDF = diffuseColor * lambert * ( rpDiffuseModifier.xyz );
+    float toonLambert = lambert > 0.0 ? 1.0 : 0.0;
+   if( lambert > 0.5 )
+    {
+        toonLambert = 0.3;
+    }
+    else if( lambert > 0.25 )
+    {
+        toonLambert = 0.2;
+    }
+    else
+    {
+        toonLambert = lambert > 0.0 ? 0.1 : 0.0;
+    }
+    half3 diffuseBRDF = diffuseColor * toonLambert * ( rpDiffuseModifier.xyz )/PI;
+	//result.color.xyz = ( diffuseBRDF + specularBRDF ) * lightColor * fragment.color.rgb;
 
-	result.color.xyz = ( diffuseBRDF + specularBRDF ) * lightColor * fragment.color.rgb;
+	result.color.xyz = ( diffuseBRDF + saturate(smoothstep(0.5f-rr,0.5f+rr,specularBRDF)) ) * lightColor * fragment.color.rgb;
 	result.color.w = 1.0;
 }

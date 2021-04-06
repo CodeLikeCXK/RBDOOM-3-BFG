@@ -66,6 +66,9 @@ void main( PS_IN fragment, out PS_OUT result )
 	half3 lightVector = normalize( ambientLightVector );
 	half3 diffuseMap = sRGBToLinearRGB( ConvertYCoCgToRGB( YCoCG ) );
 
+	const half roughness = specMapSRGB.r;
+
+
 	half3 localNormal;
 	// RB begin
 #if defined(USE_NORMAL_FMT_RGB8)
@@ -80,6 +83,7 @@ void main( PS_IN fragment, out PS_OUT result )
 	// traditional very dark Lambert light model used in Doom 3
 	half ldotN = saturate( dot3( localNormal, lightVector ) );
 
+
 #if defined(USE_HALF_LAMBERT)
 	// RB: http://developer.valvesoftware.com/wiki/Half_Lambert
 	half halfLdotN = dot3( localNormal, lightVector ) * 0.5 + 0.5;
@@ -90,15 +94,29 @@ void main( PS_IN fragment, out PS_OUT result )
 	half lambert = ldotN;
 #endif
 
+     float toonLambert = lambert > 0.0 ? 1.0 : 0.0;
+   if( lambert > 0.5 )
+    {
+        toonLambert = 0.3;
+    }
+    else if( lambert > 0.25 )
+    {
+        toonLambert = 0.2;
+    }
+    else
+    {
+        toonLambert = lambert > 0.0 ? 0.1 : 0.0;
+    }
 	const half specularPower = 10.0f;
 	half hDotN = dot3( normalize( fragment.texcoord6.xyz ), localNormal );
 	// RB: added abs
 	half3 specularContribution = _half3( pow( abs( hDotN ), specularPower ) );
 
-	half3 diffuseColor = diffuseMap * ( rpDiffuseModifier.xyz );
+	//half3 diffuseColor = diffuseMap * ( rpDiffuseModifier.xyz );
+	half3 diffuseColor = diffuseMap * ( rpDiffuseModifier.xyz ) * toonLambert;
 	half3 specularColor = specMap.xyz * specularContribution * ( rpSpecularModifier.xyz );
 	half3 lightColor = sRGBToLinearRGB( lightProj.xyz * lightFalloff.xyz );
 
-	result.color.xyz = ( diffuseColor + specularColor ) * lightColor * fragment.color.xyz;
+	result.color.xyz = ( diffuseColor + saturate(smoothstep(0.5-roughness*roughness,0.5+roughness*roughness,specularColor)) ) * lightColor * fragment.color.xyz;
 	result.color.w = 1.0;
 }

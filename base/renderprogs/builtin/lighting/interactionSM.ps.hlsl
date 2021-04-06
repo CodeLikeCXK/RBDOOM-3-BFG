@@ -126,7 +126,7 @@ void main( PS_IN fragment, out PS_OUT result )
 	// tweak to not loose so many details
 	half lambert = lerp( ldotN, halfLdotN, 0.5 );
 #else
-	half lambert = ldotN;
+	half lambert = ldotN * 0.5 + 0.5;
 #endif
 
 
@@ -470,9 +470,24 @@ void main( PS_IN fragment, out PS_OUT result )
 	//lambert /= PI;
 
 	//half3 diffuseColor = mix( diffuseMap, F0, metal ) * rpDiffuseModifier.xyz;
-	half3 diffuseBRDF = diffuseColor * lambert * ( rpDiffuseModifier.xyz );
+	//half3 diffuseBRDF = diffuseColor * lambert * ( rpDiffuseModifier.xyz );
 
-	float3 color = ( diffuseBRDF + specularBRDF ) * lightColor * fragment.color.rgb * shadow;
+      float toonLambert = lambert > 0.0 ? 1.0 : 0.0;
+   if( lambert > 0.5 )
+    {
+        toonLambert = 0.3;
+    }
+    else if( lambert > 0.25 )
+    {
+        toonLambert = 0.2;
+    }
+    else
+    {
+        toonLambert = lambert > 0.0 ? 0.1 : 0.0;
+    }
+    //add toon
+	half3 diffuseBRDF = diffuseColor * toonLambert * ( rpDiffuseModifier.xyz )/PI;
+	float3 color = ( diffuseBRDF + saturate(smoothstep(0.5f-rr,0.5f+rr,specularBRDF))) * lightColor * fragment.color.rgb * shadow;
 
 	//color = ditherChromaticBlueNoise( color, fragment.position.xy, samp6 );
 
