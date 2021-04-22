@@ -110,7 +110,9 @@ void main( PS_IN fragment, out PS_OUT result )
 	// RB: http://developer.valvesoftware.com/wiki/Half_Lambert
 	float halfLdotN = dot3( localNormal, lightVector ) * 0.5 + 0.5;
 	halfLdotN *= halfLdotN;
-
+    //add toon
+   	half lambert = lerp( dot3( localNormal, lightVector ), halfLdotN, 0.5 );
+   float toonLambert = Toon_Lambert( lambert );
 	// traditional very dark Lambert light model used in Doom 3
 	float ldotN = dot3( localNormal, lightVector );
 
@@ -122,7 +124,7 @@ void main( PS_IN fragment, out PS_OUT result )
 
 
 	diffuseColor = float3( 0.0 );
-	diffuseLight = diffuseColor * ( rpDiffuseModifier.xyz * 0.5f );
+	diffuseLight = diffuseColor * ( rpDiffuseModifier.xyz * 0.5f ) *toonLambert;
 	specularLight = float3( 0.0 );
 
 	result.color.xyz = ( ( diffuseLight + specularLight ) * halfLdotN * lightColor + rimLight ) * fragment.color.rgb;

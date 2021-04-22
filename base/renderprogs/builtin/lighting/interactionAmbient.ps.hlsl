@@ -94,19 +94,7 @@ void main( PS_IN fragment, out PS_OUT result )
 	half lambert = ldotN;
 #endif
 
-     float toonLambert = lambert > 0.0 ? 1.0 : 0.0;
-   if( lambert > 0.5 )
-    {
-        toonLambert = 0.3;
-    }
-    else if( lambert > 0.25 )
-    {
-        toonLambert = 0.2;
-    }
-    else
-    {
-        toonLambert = lambert > 0.0 ? 0.1 : 0.0;
-    }
+    float toonLambert = Toon_Lambert( lambert );
 	const half specularPower = 10.0f;
 	half hDotN = dot3( normalize( fragment.texcoord6.xyz ), localNormal );
 	// RB: added abs
