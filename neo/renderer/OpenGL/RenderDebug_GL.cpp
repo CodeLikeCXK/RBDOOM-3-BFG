@@ -3,7 +3,7 @@
 
 Doom 3 BFG Edition GPL Source Code
 Copyright (C) 1993-2012 id Software LLC, a ZeniMax Media company.
-Copyright (C) 2014-2016 Robert Beckebans
+Copyright (C) 2014-2021 Robert Beckebans
 Copyright (C) 2014-2016 Kot in Action Creative Artel
 Copyright (C) 2016-2017 Dustin Land
 
@@ -1714,21 +1714,20 @@ void idRenderBackend::DBG_ShowViewEnvprobes()
 
 	GL_State( GLS_DEFAULT | GLS_CULL_TWOSIDED );
 
-	renderProgManager.BindShader_Octahedron();
-
 	int count = 0;
 	for( viewEnvprobe_t* vProbe = viewDef->viewEnvprobes; vProbe != NULL; vProbe = vProbe->next )
 	{
 		count++;
 
+		renderProgManager.BindShader_DebugOctahedron();
+
 		GL_State( GLS_DEPTHFUNC_ALWAYS | GLS_DEPTHMASK );
 		GL_Color( 1.0f, 1.0f, 1.0f );
-
-		float modelMatrix[16];
 
 		idMat3 axis;
 		axis.Identity();
 
+		float modelMatrix[16];
 		R_AxisToModelMatrix( axis, vProbe->globalOrigin, modelMatrix );
 
 		idRenderMatrix modelRenderMatrix;
@@ -1766,6 +1765,332 @@ void idRenderBackend::DBG_ShowViewEnvprobes()
 		{
 			vProbe->radianceImage->Bind();
 		}
+
+		DrawElementsWithCounters( &zeroOneSphereSurface );
+
+		// non-hidden lines
+#if 0
+		if( r_showViewEnvprobes.GetInteger() >= 3 )
+		{
+			renderProgManager.BindShader_Color();
+
+			GL_State( GLS_DEPTHFUNC_ALWAYS | GLS_POLYMODE_LINE | GLS_DEPTHMASK );
+			GL_Color( 1.0f, 1.0f, 1.0f );
+
+			idRenderMatrix invProjectMVPMatrix;
+			idRenderMatrix::Multiply( viewDef->worldSpace.mvp, vProbe->inverseBaseProbeProject, invProjectMVPMatrix );
+			RB_SetMVP( invProjectMVPMatrix );
+			DrawElementsWithCounters( &zeroOneCubeSurface );
+		}
+#endif
+	}
+}
+
+void idRenderBackend::DBG_ShowLightGrid()
+{
+	if( r_showLightGrid.GetInteger() <= 0 || !tr.primaryWorld )
+	{
+		return;
+	}
+
+	// all volumes are expressed in world coordinates
+
+	GL_State( GLS_DEPTHFUNC_ALWAYS | GLS_DEPTHMASK );
+	GL_Color( 1.0f, 1.0f, 1.0f );
+
+	idMat3 axis;
+	axis.Identity();
+
+	// only show current area
+	int cameraArea = tr.primaryWorld->PointInArea( viewDef->renderView.vieworg );
+	if( cameraArea == -1 && r_showLightGrid.GetInteger() < 3 )
+	{
+		return;
+	}
+
+	const int numColors = 7;
+	static idVec4 colors[numColors] = { colorBrown, colorBlue, colorCyan, colorGreen, colorYellow, colorRed, colorWhite };
+
+	for( int a = 0; a < tr.primaryWorld->NumAreas(); a++ )
+	{
+		if( r_showLightGrid.GetInteger() < 3 && ( cameraArea != a ) )
+		{
+			continue;
+		}
+
+		portalArea_t* area = &tr.primaryWorld->portalAreas[a];
+
+		// use rpGlobalLightOrigin for lightGrid center
+		idVec4 lightGridOrigin( area->lightGrid.lightGridOrigin.x, area->lightGrid.lightGridOrigin.y, area->lightGrid.lightGridOrigin.z, 1.0f );
+		idVec4 lightGridSize( area->lightGrid.lightGridSize.x, area->lightGrid.lightGridSize.y, area->lightGrid.lightGridSize.z, 1.0f );
+		idVec4 lightGridBounds( area->lightGrid.lightGridBounds[0], area->lightGrid.lightGridBounds[1], area->lightGrid.lightGridBounds[2], 1.0f );
+
+		renderProgManager.SetUniformValue( RENDERPARM_GLOBALLIGHTORIGIN, lightGridOrigin.ToFloatPtr() );
+		renderProgManager.SetUniformValue( RENDERPARM_JITTERTEXSCALE, lightGridSize.ToFloatPtr() );
+		renderProgManager.SetUniformValue( RENDERPARM_JITTERTEXOFFSET, lightGridBounds.ToFloatPtr() );
+
+		for( int i = 0; i < area->lightGrid.lightGridPoints.Num(); i++ )
+		{
+			lightGridPoint_t* gridPoint = &area->lightGrid.lightGridPoints[i];
+			if( !gridPoint->valid && r_showLightGrid.GetInteger() < 3 )
+			{
+				continue;
+			}
+
+			idVec3 distanceToCam = gridPoint->origin - viewDef->renderView.vieworg;
+			if( distanceToCam.LengthSqr() > ( 1024 * 1024 ) && r_showLightGrid.GetInteger() < 3 )
+			{
+				continue;
+			}
+
+#if 0
+			if( i > 53 )
+			{
+				break;
+			}
+#endif
+
+			// move center into the cube so we can void using negative results with GetBaseGridCoord
+			idVec3 gridPointOrigin = gridPoint->origin + idVec3( 4, 4, 4 );
+
+			idVec4 localViewOrigin( 1.0f );
+			idVec4 globalViewOrigin;
+			globalViewOrigin.x = viewDef->renderView.vieworg.x;
+			globalViewOrigin.y = viewDef->renderView.vieworg.y;
+			globalViewOrigin.z = viewDef->renderView.vieworg.z;
+			globalViewOrigin.w = 1.0f;
+
+			float modelMatrix[16];
+			R_AxisToModelMatrix( axis, gridPointOrigin, modelMatrix );
+
+			R_GlobalPointToLocal( modelMatrix, viewDef->renderView.vieworg, localViewOrigin.ToVec3() );
+
+			renderProgManager.SetUniformValue( RENDERPARM_LOCALVIEWORIGIN, localViewOrigin.ToFloatPtr() ); // rpLocalViewOrigin
+
+			// RB: if we want to get the normals in world space so we need the model -> world matrix
+			idRenderMatrix modelMatrix2;
+			idRenderMatrix::Transpose( *( idRenderMatrix* )modelMatrix, modelMatrix2 );
+
+			renderProgManager.SetUniformValue( RENDERPARM_MODELMATRIX_X, &modelMatrix2[0][0] );
+			renderProgManager.SetUniformValue( RENDERPARM_MODELMATRIX_Y, &modelMatrix2[1][0] );
+			renderProgManager.SetUniformValue( RENDERPARM_MODELMATRIX_Z, &modelMatrix2[2][0] );
+			renderProgManager.SetUniformValue( RENDERPARM_MODELMATRIX_W, &modelMatrix2[3][0] );
+
+
+#if 0
+			renderProgManager.BindShader_Color();
+
+			int gridCoord[3];
+			area->lightGrid.GetBaseGridCoord( gridPoint->origin, gridCoord );
+
+			idVec3 color = area->lightGrid.GetGridCoordDebugColor( gridCoord );
+			//idVec3 color = area->lightGrid.GetProbeIndexDebugColor( i );
+			//idVec4 color = colors[ i % numColors ];
+			GL_Color( color );
+#else
+
+			if( r_showLightGrid.GetInteger() == 4 || !area->lightGrid.GetIrradianceImage() )
+			{
+				renderProgManager.BindShader_Color();
+
+				idVec4 color;
+				if( !gridPoint->valid )
+				{
+					color = colorPurple;
+				}
+				else
+				{
+					color = colors[ a % numColors ];
+				}
+
+				GL_Color( color );
+			}
+			else
+			{
+				renderProgManager.BindShader_DebugLightGrid();
+
+				GL_SelectTexture( 0 );
+				area->lightGrid.GetIrradianceImage()->Bind();
+			}
+#endif
+
+			idRenderMatrix modelRenderMatrix;
+			idRenderMatrix::CreateFromOriginAxis( gridPoint->origin, axis, modelRenderMatrix );
+
+			// calculate the matrix that transforms the unit cube to exactly cover the model in world space
+			const float size = 3.0f;
+			idBounds debugBounds( idVec3( -size ), idVec3( size ) );
+
+			idRenderMatrix inverseBaseModelProject;
+			idRenderMatrix::OffsetScaleForBounds( modelRenderMatrix, debugBounds, inverseBaseModelProject );
+
+			idRenderMatrix invProjectMVPMatrix;
+			idRenderMatrix::Multiply( viewDef->worldSpace.mvp, inverseBaseModelProject, invProjectMVPMatrix );
+			RB_SetMVP( invProjectMVPMatrix );
+
+			DrawElementsWithCounters( &zeroOneSphereSurface );
+			//DrawElementsWithCounters( &zeroOneCubeSurface );
+		}
+	}
+
+	if( r_showLightGrid.GetInteger() == 2 )
+	{
+		// show 8 nearest grid points around the camera and illustrate how the trilerping works
+
+		idVec3          lightOrigin;
+		int             pos[3];
+		int				gridPointIndex;
+		int				gridPointIndex2;
+		lightGridPoint_t*  gridPoint;
+		lightGridPoint_t*  gridPoint2;
+		float           frac[3];
+		int             gridStep[3];
+		float           totalFactor;
+
+		portalArea_t* area = &tr.primaryWorld->portalAreas[cameraArea];
+
+		renderProgManager.BindShader_Color();
+
+		lightOrigin = viewDef->renderView.vieworg;
+		lightOrigin += viewDef->renderView.viewaxis[0] * 150.0f;
+		lightOrigin -= viewDef->renderView.viewaxis[2] * 16.0f;
+
+		// draw sample origin we want to test the grid with
+		{
+			GL_Color( colorYellow );
+
+			idRenderMatrix modelRenderMatrix;
+			idRenderMatrix::CreateFromOriginAxis( lightOrigin, axis, modelRenderMatrix );
+
+			// calculate the matrix that transforms the unit cube to exactly cover the model in world space
+			const float size = 2.0f;
+			idBounds debugBounds( idVec3( -size ), idVec3( size ) );
+
+			idRenderMatrix inverseBaseModelProject;
+			idRenderMatrix::OffsetScaleForBounds( modelRenderMatrix, debugBounds, inverseBaseModelProject );
+
+			idRenderMatrix invProjectMVPMatrix;
+			idRenderMatrix::Multiply( viewDef->worldSpace.mvp, inverseBaseModelProject, invProjectMVPMatrix );
+			RB_SetMVP( invProjectMVPMatrix );
+
+			DrawElementsWithCounters( &zeroOneSphereSurface );
+		}
+
+		// find base grid point
+		lightOrigin -= area->lightGrid.lightGridOrigin;
+		for( int i = 0; i < 3; i++ )
+		{
+			float           v;
+
+			v = lightOrigin[i] * ( 1.0f / area->lightGrid.lightGridSize[i] );
+			pos[i] = floor( v );
+			frac[i] = v - pos[i];
+
+			if( pos[i] < 0 )
+			{
+				pos[i] = 0;
+			}
+			else if( pos[i] >= area->lightGrid.lightGridBounds[i] - 1 )
+			{
+				pos[i] = area->lightGrid.lightGridBounds[i] - 1;
+			}
+		}
+
+		// trilerp the light value
+		gridStep[0] = 1;
+		gridStep[1] = area->lightGrid.lightGridBounds[0];
+		gridStep[2] = area->lightGrid.lightGridBounds[0] * area->lightGrid.lightGridBounds[1];
+
+		gridPointIndex = pos[0] * gridStep[0] + pos[1] * gridStep[1] + pos[2] * gridStep[2];
+		gridPoint = &area->lightGrid.lightGridPoints[ gridPointIndex ];
+
+		totalFactor = 0;
+		idVec3 cornerOffsets[8];
+
+		for( int i = 0; i < 8; i++ )
+		{
+			float  factor = 1.0;
+
+			gridPoint2 = gridPoint;
+			gridPointIndex2 = gridPointIndex;
+
+			for( int j = 0; j < 3; j++ )
+			{
+				cornerOffsets[i][j] = i & ( 1 << j );
+
+				if( cornerOffsets[i][j] > 0.0f )
+				{
+					factor *= frac[j];
+
+#if 1
+					gridPointIndex2 += gridStep[j];
+					if( gridPointIndex2 < 0 || gridPointIndex2 >= area->lightGrid.lightGridPoints.Num() )
+					{
+						// ignore values outside lightgrid
+						continue;
+					}
+
+					gridPoint2 = &area->lightGrid.lightGridPoints[ gridPointIndex2 ];
+#else
+					if( pos[j] + 1 > area->lightGrid.lightGridBounds[j] - 1 )
+					{
+						// ignore values outside lightgrid
+						break;
+					}
+
+					gridPoint2 += gridStep[j];
+#endif
+				}
+				else
+				{
+					factor *= ( 1.0f - frac[j] );
+				}
+			}
+
+			if( !gridPoint2->valid )
+			{
+				// ignore samples in walls
+				continue;
+			}
+
+			totalFactor += factor;
+
+			idVec4 color = Lerp( colorBlack, colorGreen, factor );
+			GL_Color( color );
+
+			idRenderMatrix modelRenderMatrix;
+			idRenderMatrix::CreateFromOriginAxis( gridPoint2->origin, axis, modelRenderMatrix );
+
+			// calculate the matrix that transforms the unit cube to exactly cover the model in world space
+			const float size = 4.0f;
+			idBounds debugBounds( idVec3( -size ), idVec3( size ) );
+
+			idRenderMatrix inverseBaseModelProject;
+			idRenderMatrix::OffsetScaleForBounds( modelRenderMatrix, debugBounds, inverseBaseModelProject );
+
+			idRenderMatrix invProjectMVPMatrix;
+			idRenderMatrix::Multiply( viewDef->worldSpace.mvp, inverseBaseModelProject, invProjectMVPMatrix );
+			RB_SetMVP( invProjectMVPMatrix );
+
+			DrawElementsWithCounters( &zeroOneSphereSurface );
+		}
+
+		// draw main grid point where camera position snapped to
+		GL_Color( colorRed );
+
+		idRenderMatrix modelRenderMatrix;
+		idRenderMatrix::CreateFromOriginAxis( gridPoint->origin, axis, modelRenderMatrix );
+
+		// calculate the matrix that transforms the unit cube to exactly cover the model in world space
+		const float size = 5.0f;
+		idBounds debugBounds( idVec3( -size ), idVec3( size ) );
+
+		idRenderMatrix inverseBaseModelProject;
+		idRenderMatrix::OffsetScaleForBounds( modelRenderMatrix, debugBounds, inverseBaseModelProject );
+
+		idRenderMatrix invProjectMVPMatrix;
+		idRenderMatrix::Multiply( viewDef->worldSpace.mvp, inverseBaseModelProject, invProjectMVPMatrix );
+		RB_SetMVP( invProjectMVPMatrix );
 
 		DrawElementsWithCounters( &zeroOneSphereSurface );
 	}
@@ -3109,6 +3434,11 @@ idRenderBackend::DBG_RenderDebugTools
 */
 void idRenderBackend::DBG_RenderDebugTools( drawSurf_t** drawSurfs, int numDrawSurfs )
 {
+	if( viewDef->renderView.rdflags & RDF_IRRADIANCE )
+	{
+		return;
+	}
+
 	// don't do much if this was a 2D rendering
 	if( !viewDef->viewEntitys )
 	{
@@ -3142,6 +3472,7 @@ void idRenderBackend::DBG_RenderDebugTools( drawSurf_t** drawSurfs, int numDrawS
 	DBG_ShowViewEntitys( viewDef->viewEntitys );
 	DBG_ShowLights();
 	// RB begin
+	DBG_ShowLightGrid();
 	DBG_ShowViewEnvprobes();
 	DBG_ShowShadowMapLODs();
 	DBG_ShowShadowMaps();

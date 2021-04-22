@@ -5,7 +5,7 @@ Doom 3 BFG Edition GPL Source Code
 Copyright (C) 1993-2012 id Software LLC, a ZeniMax Media company.
 Copyright (C) 2014 Carl Kenner
 Copyright (C) 2016-2017 Dustin Land
-Copyright (C) 2013-2020 Robert Beckebans
+Copyright (C) 2013-2021 Robert Beckebans
 
 This file is part of the Doom 3 BFG Edition GPL Source Code ("Doom 3 BFG Edition Source Code").
 
@@ -1323,8 +1323,113 @@ void idRenderBackend::DrawSingleInteraction( drawInteraction_t* din, bool useFas
 	const textureUsage_t specUsage = din->specularImage->GetUsage();
 
 	// RB begin
-	if( useIBL )
+	if( useIBL && currentSpace->useLightGrid )
 	{
+		idVec4 probeMins, probeMaxs, probeCenter;
+
+		probeMins[0] = viewDef->globalProbeBounds[0][0];
+		probeMins[1] = viewDef->globalProbeBounds[0][1];
+		probeMins[2] = viewDef->globalProbeBounds[0][2];
+		probeMins[3] = viewDef->globalProbeBounds.IsCleared() ? 0.0f : 1.0f;
+
+		probeMaxs[0] = viewDef->globalProbeBounds[1][0];
+		probeMaxs[1] = viewDef->globalProbeBounds[1][1];
+		probeMaxs[2] = viewDef->globalProbeBounds[1][2];
+		probeMaxs[3] = 0.0f;
+
+		idVec3 center = viewDef->globalProbeBounds.GetCenter();
+		probeCenter.Set( center.x, center.y, center.z, 1.0f );
+
+		SetVertexParm( RENDERPARM_WOBBLESKY_X, probeMins.ToFloatPtr() );
+		SetVertexParm( RENDERPARM_WOBBLESKY_Y, probeMaxs.ToFloatPtr() );
+		SetVertexParm( RENDERPARM_WOBBLESKY_Z, probeCenter.ToFloatPtr() );
+
+		//SetVertexParm( RENDERPARM_WOBBLESK_Z, probeCenter.ToFloatPtr() );
+
+		// use rpGlobalLightOrigin for lightGrid center
+		idVec4 lightGridOrigin( currentSpace->lightGridOrigin.x, currentSpace->lightGridOrigin.y, currentSpace->lightGridOrigin.z, 1.0f );
+		idVec4 lightGridSize( currentSpace->lightGridSize.x, currentSpace->lightGridSize.y, currentSpace->lightGridSize.z, 1.0f );
+		idVec4 lightGridBounds( currentSpace->lightGridBounds[0], currentSpace->lightGridBounds[1], currentSpace->lightGridBounds[2], 1.0f );
+
+		renderProgManager.SetUniformValue( RENDERPARM_GLOBALLIGHTORIGIN, lightGridOrigin.ToFloatPtr() );
+		renderProgManager.SetUniformValue( RENDERPARM_JITTERTEXSCALE, lightGridSize.ToFloatPtr() );
+		renderProgManager.SetUniformValue( RENDERPARM_JITTERTEXOFFSET, lightGridBounds.ToFloatPtr() );
+
+		if( specUsage == TD_SPECULAR_PBR_RMAO || specUsage == TD_SPECULAR_PBR_RMAOD )
+		{
+			// PBR path with roughness, metal and AO
+			if( din->surf->jointCache )
+			{
+				renderProgManager.BindShader_ImageBasedLightGridSkinned_PBR();
+			}
+			else
+			{
+				renderProgManager.BindShader_ImageBasedLightGrid_PBR();
+			}
+		}
+		else
+		{
+			if( din->surf->jointCache )
+			{
+				renderProgManager.BindShader_ImageBasedLightGridSkinned();
+			}
+			else
+			{
+				renderProgManager.BindShader_ImageBasedLightGrid();
+			}
+		}
+
+		GL_SelectTexture( INTERACTION_TEXUNIT_FALLOFF );
+		globalImages->brdfLutImage->Bind();
+
+		GL_SelectTexture( INTERACTION_TEXUNIT_PROJECTION );
+#if defined( USE_VULKAN )
+		globalImages->whiteImage->Bind();
+#else
+		if( !r_useSSAO.GetBool() )
+		{
+			globalImages->whiteImage->Bind();
+		}
+		else
+		{
+			globalImages->ambientOcclusionImage[0]->Bind();
+		}
+#endif
+
+		GL_SelectTexture( INTERACTION_TEXUNIT_AMBIENT_CUBE1 );
+		currentSpace->irradianceAtlasImage->Bind();
+
+		GL_SelectTexture( INTERACTION_TEXUNIT_SPECULAR_CUBE1 );
+		if( viewDef->radianceImage )
+		{
+			viewDef->radianceImage->Bind();
+		}
+		else
+		{
+			globalImages->defaultUACRadianceCube->Bind();
+		}
+	}
+	else if( useIBL )
+	{
+		idVec4 probeMins, probeMaxs, probeCenter;
+
+		probeMins[0] = viewDef->globalProbeBounds[0][0];
+		probeMins[1] = viewDef->globalProbeBounds[0][1];
+		probeMins[2] = viewDef->globalProbeBounds[0][2];
+		probeMins[3] = viewDef->globalProbeBounds.IsCleared() ? 0.0f : 1.0f;
+
+		probeMaxs[0] = viewDef->globalProbeBounds[1][0];
+		probeMaxs[1] = viewDef->globalProbeBounds[1][1];
+		probeMaxs[2] = viewDef->globalProbeBounds[1][2];
+		probeMaxs[3] = 0.0f;
+
+		idVec3 center = viewDef->globalProbeBounds.GetCenter();
+		probeCenter.Set( center.x, center.y, center.z, 1.0f );
+
+		SetVertexParm( RENDERPARM_WOBBLESKY_X, probeMins.ToFloatPtr() );
+		SetVertexParm( RENDERPARM_WOBBLESKY_Y, probeMaxs.ToFloatPtr() );
+		SetVertexParm( RENDERPARM_WOBBLESKY_Z, probeCenter.ToFloatPtr() );
+
 		if( specUsage == TD_SPECULAR_PBR_RMAO || specUsage == TD_SPECULAR_PBR_RMAOD )
 		{
 			// PBR path with roughness, metal and AO
@@ -1353,15 +1458,18 @@ void idRenderBackend::DrawSingleInteraction( drawInteraction_t* din, bool useFas
 		globalImages->brdfLutImage->Bind();
 
 		GL_SelectTexture( INTERACTION_TEXUNIT_PROJECTION );
+#if defined( USE_VULKAN )
+		globalImages->whiteImage->Bind();
+#else
 		if( !r_useSSAO.GetBool() )
 		{
 			globalImages->whiteImage->Bind();
-			//globalImages->brdfLutImage->Bind();
 		}
 		else
 		{
 			globalImages->ambientOcclusionImage[0]->Bind();
 		}
+#endif
 
 		// TODO bind the 3 closest probes
 		GL_SelectTexture( INTERACTION_TEXUNIT_AMBIENT_CUBE1 );
@@ -2078,7 +2186,7 @@ idRenderBackend::AmbientPass
 */
 void idRenderBackend::AmbientPass( const drawSurf_t* const* drawSurfs, int numDrawSurfs, bool fillGbuffer )
 {
-	const bool hdrIsActive = ( r_useHDR.GetBool() && globalFramebuffers.hdrFBO != NULL && globalFramebuffers.hdrFBO->IsBound() );
+	Framebuffer* previousFramebuffer = Framebuffer::GetActiveFramebuffer();
 
 	if( numDrawSurfs == 0 )
 	{
@@ -2092,6 +2200,11 @@ void idRenderBackend::AmbientPass( const drawSurf_t* const* drawSurfs, int numDr
 
 	// if we are just doing 2D rendering, no need to fill the depth buffer
 	if( viewDef->viewEntitys == NULL )
+	{
+		return;
+	}
+
+	if( viewDef->renderView.rdflags & RDF_NOAMBIENT )
 	{
 		return;
 	}
@@ -2543,9 +2656,9 @@ void idRenderBackend::AmbientPass( const drawSurf_t* const* drawSurfs, int numDr
 	if( fillGbuffer )
 	{
 		// go back to main render target
-		if( hdrIsActive )
+		if( previousFramebuffer != NULL )
 		{
-			globalFramebuffers.hdrFBO->Bind();
+			previousFramebuffer->Bind();
 		}
 		else
 		{
@@ -2941,6 +3054,11 @@ void idRenderBackend::ShadowMapPass( const drawSurf_t* drawSurfs, const viewLigh
 	}
 
 	if( drawSurfs == NULL )
+	{
+		return;
+	}
+
+	if( viewDef->renderView.rdflags & RDF_NOSHADOWS )
 	{
 		return;
 	}
@@ -3472,21 +3590,6 @@ void idRenderBackend::ShadowMapPass( const drawSurf_t* drawSurfs, const viewLigh
 			DrawElementsWithCounters( drawSurf );
 		}
 	}
-
-	// cleanup the shadow specific rendering state
-	if( r_useHDR.GetBool() ) //&& !backEnd.viewDef->is2Dgui )
-	{
-		globalFramebuffers.hdrFBO->Bind();
-	}
-	else
-	{
-		Framebuffer::Unbind();
-	}
-	renderProgManager.Unbind();
-
-	GL_State( GLS_DEFAULT );
-
-	SetFragmentParm( RENDERPARM_ALPHA_TEST, vec4_zero.ToFloatPtr() );
 }
 
 /*
@@ -3514,6 +3617,8 @@ void idRenderBackend::DrawInteractions( const viewDef_t* _viewDef )
 	GL_SelectTexture( 0 );
 
 	const bool useLightDepthBounds = r_useLightDepthBounds.GetBool() && !r_useShadowMapping.GetBool();
+
+	Framebuffer* previousFramebuffer = Framebuffer::GetActiveFramebuffer();
 
 	//
 	// for each light, perform shadowing and adding
@@ -3577,6 +3682,21 @@ void idRenderBackend::DrawInteractions( const viewDef_t* _viewDef )
 			{
 				ShadowMapPass( vLight->globalShadows, vLight, side );
 			}
+
+			// go back to main render target
+			if( previousFramebuffer != NULL )
+			{
+				previousFramebuffer->Bind();
+			}
+			else
+			{
+				Framebuffer::Unbind();
+			}
+			renderProgManager.Unbind();
+
+			GL_State( GLS_DEFAULT );
+
+			SetFragmentParm( RENDERPARM_ALPHA_TEST, vec4_zero.ToFloatPtr() );
 
 			// go back from light view to default camera view
 			ResetViewportAndScissorToDefaultCamera( _viewDef );
@@ -4676,7 +4796,7 @@ void idRenderBackend::Tonemap( const viewDef_t* _viewDef )
 
 void idRenderBackend::Bloom( const viewDef_t* _viewDef )
 {
-	if( _viewDef->is2Dgui || !r_useHDR.GetBool() )
+	if( _viewDef->is2Dgui || !r_useHDR.GetBool() || ( _viewDef->renderView.rdflags & RDF_IRRADIANCE ) )
 	{
 		return;
 	}
@@ -4822,13 +4942,18 @@ void idRenderBackend::DrawScreenSpaceAmbientOcclusion( const viewDef_t* _viewDef
 		return;
 	}
 
+	if( _viewDef->renderView.rdflags & RDF_NOAMBIENT )
+	{
+		return;
+	}
+
 	renderLog.OpenMainBlock( MRB_SSAO_PASS );
 	renderLog.OpenBlock( "Render_SSAO", colorBlue );
 
 	currentSpace = &viewDef->worldSpace;
 	RB_SetMVP( viewDef->worldSpace.mvp );
 
-	const bool hdrIsActive = ( r_useHDR.GetBool() && globalFramebuffers.hdrFBO != NULL && globalFramebuffers.hdrFBO->IsBound() );
+	Framebuffer* previousFramebuffer = Framebuffer::GetActiveFramebuffer();
 
 	int screenWidth = renderSystem->GetWidth();
 	int screenHeight = renderSystem->GetHeight();
@@ -4920,9 +5045,9 @@ void idRenderBackend::DrawScreenSpaceAmbientOcclusion( const viewDef_t* _viewDef
 				GL_State( GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO | GLS_ALPHAMASK | GLS_DEPTHMASK | GLS_DEPTHFUNC_ALWAYS );
 			}
 
-			if( hdrIsActive )
+			if( previousFramebuffer != NULL )
 			{
-				globalFramebuffers.hdrFBO->Bind();
+				previousFramebuffer->Bind();
 			}
 			else
 			{
@@ -5049,9 +5174,9 @@ void idRenderBackend::DrawScreenSpaceAmbientOcclusion( const viewDef_t* _viewDef
 		// AO blur Y
 		if( downModulateScreen )
 		{
-			if( hdrIsActive )
+			if( previousFramebuffer != NULL )
 			{
-				globalFramebuffers.hdrFBO->Bind();
+				previousFramebuffer->Bind();
 			}
 			else
 			{
@@ -5086,9 +5211,9 @@ void idRenderBackend::DrawScreenSpaceAmbientOcclusion( const viewDef_t* _viewDef
 	if( !downModulateScreen )
 	{
 		// go back to main scene render target
-		if( hdrIsActive )
+		if( previousFramebuffer != NULL )
 		{
-			globalFramebuffers.hdrFBO->Bind();
+			previousFramebuffer->Bind();
 		}
 		else
 		{
@@ -5133,12 +5258,17 @@ void idRenderBackend::DrawScreenSpaceGlobalIllumination( const viewDef_t* _viewD
 		return;
 	}
 
+	if( _viewDef->renderView.rdflags & RDF_NOAMBIENT )
+	{
+		return;
+	}
+
 	RENDERLOG_PRINTF( "---------- RB_SSGI() ----------\n" );
 
 	currentSpace = &viewDef->worldSpace;
 	RB_SetMVP( viewDef->worldSpace.mvp );
 
-	const bool hdrIsActive = ( r_useHDR.GetBool() && globalFramebuffers.hdrFBO != NULL && globalFramebuffers.hdrFBO->IsBound() );
+	Framebuffer* previousFramebuffer = Framebuffer::GetActiveFramebuffer();
 
 	int screenWidth = renderSystem->GetWidth();
 	int screenHeight = renderSystem->GetHeight();
@@ -5147,7 +5277,8 @@ void idRenderBackend::DrawScreenSpaceGlobalIllumination( const viewDef_t* _viewD
 	GL_Viewport( 0, 0, screenWidth, screenHeight );
 	GL_Scissor( 0, 0, screenWidth, screenHeight );
 
-	if( !hdrIsActive )
+	// TODO remove
+	if( previousFramebuffer == NULL )
 	{
 		const idScreenRect& viewport = viewDef->viewport;
 		globalImages->currentRenderImage->CopyFramebuffer( viewport.x1, viewport.y1, viewport.GetWidth(), viewport.GetHeight() );
@@ -5237,9 +5368,9 @@ void idRenderBackend::DrawScreenSpaceGlobalIllumination( const viewDef_t* _viewD
 			GL_State( GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHMASK | GLS_DEPTHFUNC_ALWAYS );
 		}
 
-		if( hdrIsActive )
+		if( previousFramebuffer != NULL )
 		{
-			globalFramebuffers.hdrFBO->Bind();
+			previousFramebuffer->Bind();
 		}
 		else
 		{
@@ -5301,9 +5432,9 @@ void idRenderBackend::DrawScreenSpaceGlobalIllumination( const viewDef_t* _viewD
 	}
 
 	GL_SelectTexture( 2 );
-	if( hdrIsActive )
+	if( previousFramebuffer != NULL )
 	{
-		globalImages->currentRenderHDRImage->Bind();
+		previousFramebuffer->Bind();
 	}
 	else
 	{
@@ -5336,9 +5467,9 @@ void idRenderBackend::DrawScreenSpaceGlobalIllumination( const viewDef_t* _viewD
 #endif
 
 		// AO blur Y
-		if( hdrIsActive )
+		if( previousFramebuffer != NULL )
 		{
-			globalFramebuffers.hdrFBO->Bind();
+			previousFramebuffer->Bind();
 		}
 		else
 		{
@@ -5539,7 +5670,14 @@ void idRenderBackend::DrawViewInternal( const viewDef_t* _viewDef, const int ste
 
 	if( useHDR )
 	{
-		globalFramebuffers.hdrFBO->Bind();
+		if( _viewDef->renderView.rdflags & RDF_IRRADIANCE )
+		{
+			globalFramebuffers.envprobeFBO->Bind();
+		}
+		else
+		{
+			globalFramebuffers.hdrFBO->Bind();
+		}
 	}
 	else
 	{
@@ -5710,8 +5848,9 @@ void idRenderBackend::DrawViewInternal( const viewDef_t* _viewDef, const int ste
 	DBG_RenderDebugTools( drawSurfs, numDrawSurfs );
 
 #if !defined(USE_VULKAN)
+
 	// RB: convert back from HDR to LDR range
-	if( useHDR )
+	if( useHDR && !( _viewDef->renderView.rdflags & RDF_IRRADIANCE ) )
 	{
 		/*
 		int x = backEnd.viewDef->viewport.x1;

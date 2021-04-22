@@ -3,7 +3,7 @@
 
 Doom 3 BFG Edition GPL Source Code
 Copyright (C) 1993-2012 id Software LLC, a ZeniMax Media company.
-Copyright (C) 2012-2020 Robert Beckebans
+Copyright (C) 2012-2021 Robert Beckebans
 Copyright (C) 2014-2016 Kot in Action Creative Artel
 
 This file is part of the Doom 3 BFG Edition GPL Source Code ("Doom 3 BFG Edition Source Code").
@@ -271,8 +271,8 @@ public:
 
 	// derived information
 	//idPlane						lightProject[4];		// old style light projection where Z and W are flipped and projected lights lightProject[3] is divided by ( zNear + zFar )
-	idRenderMatrix				baseLightProject;		// global xyz1 to projected light strq
-	idRenderMatrix				inverseBaseLightProject;// transforms the zero-to-one cube to exactly cover the light in world space
+	//idRenderMatrix				baseLightProject;		// global xyz1 to projected light strq
+	idRenderMatrix				inverseBaseProbeProject;// transforms the zero-to-one cube to exactly cover the light in world space
 
 	idBounds					globalProbeBounds;
 
@@ -450,6 +450,15 @@ struct viewEntity_t
 	// be linked to the lights or added to the drawsurf list in a serial code section
 	drawSurf_t* 			drawSurfs;
 
+	// RB: use light grid of the best area this entity is in
+	bool					useLightGrid;
+	idImage* 				irradianceAtlasImage;
+
+	idVec3					lightGridOrigin;
+	idVec3					lightGridSize;
+	int						lightGridBounds[3];
+	// RB end
+
 	// R_AddSingleModel will build a chain of parameters here to setup shadow volumes
 	staticShadowVolumeParms_t* 		staticShadowVolumes;
 	dynamicShadowVolumeParms_t* 	dynamicShadowVolumes;
@@ -477,10 +486,49 @@ struct viewEnvprobe_t
 	bool					removeFromList;
 
 	idVec3					globalOrigin;				// global envprobe origin used by backend
+	idBounds				globalProbeBounds;
 
-	idRenderMatrix			inverseBaseLightProject;	// the matrix for deforming the 'zeroOneCubeModel' to exactly cover the light volume in world space
+	idRenderMatrix			inverseBaseProbeProject;	// the matrix for deforming the 'zeroOneCubeModel' to exactly cover the light volume in world space
 	idImage* 				irradianceImage;			// cubemap image used for diffuse IBL by backend
 	idImage* 				radianceImage;				// cubemap image used for specular IBL by backend
+};
+
+struct calcEnvprobeParms_t
+{
+	// input
+	byte*							buffers[6];				// HDR R11G11B11F standard OpenGL cubemap sides
+	int								samples;
+
+	int								outWidth;
+	int								outHeight;
+
+	bool							printProgress;
+
+	idStr							filename;
+
+	// output
+	halfFloat_t*					outBuffer;				// HDR R11G11B11F packed octahedron atlas
+	int								time;					// execution time in milliseconds
+};
+
+
+
+static const int LIGHTGRID_IRRADIANCE_SIZE	= 32;
+
+struct calcLightGridPointParms_t
+{
+	// input
+	byte*							radiance[6];			// HDR RGB16F standard OpenGL cubemap sides
+	int								gridCoord[3];
+
+	int								outWidth;				// LIGHTGRID_IRRADIANCE_SIZE
+	int								outHeight;
+
+	// output
+	SphericalHarmonicsT<idVec3, 3>	shRadiance;				// L3 Spherical Harmonics
+
+	halfFloat_t*					outBuffer;				// HDR R11G11B11F octahedron LIGHTGRID_IRRADIANCE_SIZE^2
+	int								time;					// execution time in milliseconds
 };
 // RB end
 
@@ -594,10 +642,10 @@ struct viewDef_t
 	viewEnvprobe_t*		viewEnvprobes;
 
 	// RB: nearest probe for now
+	idBounds			globalProbeBounds;
 	idRenderMatrix		inverseBaseEnvProbeProject;	// the matrix for deforming the 'zeroOneCubeModel' to exactly cover the environent probe volume in world space
 	idImage* 			irradianceImage;			// cubemap image used for diffuse IBL by backend
 	idImage* 			radianceImage;				// cubemap image used for specular IBL by backend
-	// RB end
 };
 
 
@@ -838,6 +886,7 @@ public:
 
 	virtual void			RenderCommandBuffers( const emptyCommand_t* commandBuffers );
 	virtual void			TakeScreenshot( int width, int height, const char* fileName, int downSample, renderView_t* ref, int exten );
+	virtual byte*			CaptureRenderToBuffer( int width, int height, renderView_t* ref );
 	virtual void			CropRenderSize( int width, int height );
 	virtual void			CaptureRenderToImage( const char* imageName, bool clearColorAfterCopy = false );
 	virtual void			CaptureRenderToFile( const char* fileName, bool fixAlpha );
@@ -920,6 +969,8 @@ public:
 
 	unsigned short			gammaTable[256];	// brightness / gamma modify this
 
+	idMat3					cubeAxis[6]; // RB
+
 	srfTriangles_t* 		unitSquareTriangles;
 	srfTriangles_t* 		zeroOneCubeTriangles;
 	srfTriangles_t* 		zeroOneSphereTriangles;
@@ -934,6 +985,11 @@ public:
 	drawSurf_t				testImageSurface_;
 
 	idParallelJobList* 		frontEndJobList;
+
+	// RB irradiance and GGX background jobs
+	idParallelJobList* 					envprobeJobList;
+	idList<calcEnvprobeParms_t*>		envprobeJobs;
+	idList<calcLightGridPointParms_t*>	lightGridJobs;
 
 	idRenderBackend			backend;
 
@@ -1002,7 +1058,6 @@ extern idCVar r_useShadowDepthBounds;		// use depth bounds test on individual sh
 extern idCVar r_useShadowMapping;			// use shadow mapping instead of stencil shadows
 extern idCVar r_useHalfLambertLighting;		// use Half-Lambert lighting instead of classic Lambert
 extern idCVar r_useHDR;
-extern idCVar r_useSRGB;
 extern idCVar r_useSeamlessCubeMap;
 // RB end
 
@@ -1148,6 +1203,7 @@ extern idCVar r_useHierarchicalDepthBuffer;
 extern idCVar r_usePBR;
 extern idCVar r_pbrDebug;
 extern idCVar r_showViewEnvprobes;
+extern idCVar r_showLightGrid;				// show Quake 3 style light grid points
 
 extern idCVar r_exposure;
 // RB end
@@ -1324,6 +1380,85 @@ RENDERWORLD_PORTALS
 
 viewEntity_t* R_SetEntityDefViewEntity( idRenderEntityLocal* def );
 viewLight_t* R_SetLightDefViewLight( idRenderLightLocal* def );
+
+/*
+============================================================
+
+RENDERWORLD_ENVPROBES
+
+============================================================
+*/
+
+void R_SampleCubeMapHDR( const idVec3& dir, int size, byte* buffers[6], float result[3], float& u, float& v );
+void R_SampleCubeMapHDR16F( const idVec3& dir, int size, halfFloat_t* buffers[6], float result[3], float& u, float& v );
+
+idVec2 NormalizedOctCoord( int x, int y, const int probeSideLength );
+
+class CommandlineProgressBar
+{
+private:
+	size_t tics = 0;
+	size_t nextTicCount = 0;
+	int	count = 0;
+	int expectedCount = 0;
+
+public:
+	CommandlineProgressBar( int _expectedCount )
+	{
+		expectedCount = _expectedCount;
+	}
+
+	void Start()
+	{
+		common->Printf( "0%%  10   20   30   40   50   60   70   80   90   100%%\n" );
+		common->Printf( "|----|----|----|----|----|----|----|----|----|----|\n" );
+
+		common->UpdateScreen( false );
+	}
+
+	void Increment()
+	{
+		if( ( count + 1 ) >= nextTicCount )
+		{
+			size_t ticsNeeded = ( size_t )( ( ( double )( count + 1 ) / expectedCount ) * 50.0 );
+
+			do
+			{
+				common->Printf( "*" );
+			}
+			while( ++tics < ticsNeeded );
+
+			nextTicCount = ( size_t )( ( tics / 50.0 ) * expectedCount );
+			if( count == ( expectedCount - 1 ) )
+			{
+				if( tics < 51 )
+				{
+					common->Printf( "*" );
+				}
+				common->Printf( "\n" );
+			}
+
+			common->UpdateScreen( false );
+		}
+
+		count++;
+	}
+
+	void Reset()
+	{
+		count = 0;
+		tics = 0;
+		nextTicCount = 0;
+	}
+
+	void Reset( int expected )
+	{
+		expectedCount = expected;
+		count = 0;
+		tics = 0;
+		nextTicCount = 0;
+	}
+};
 
 /*
 ====================================================================
@@ -1531,7 +1666,6 @@ struct localTrace_t
 localTrace_t R_LocalTrace( const idVec3& start, const idVec3& end, const float radius, const srfTriangles_t* tri );
 
 
-
 /*
 ============================================================
 
@@ -1562,6 +1696,9 @@ void RB_DrawBounds( const idBounds& bounds );
 void RB_ShutdownDebugTools();
 void RB_SetVertexColorParms( stageVertexColor_t svc );
 
+
+
+
 //=============================================
 
 #include "ResolutionScale.h"
@@ -1571,8 +1708,6 @@ void RB_SetVertexColorParms( stageVertexColor_t svc );
 #include "jobs/staticshadowvolume/StaticShadowVolume.h"
 #include "jobs/dynamicshadowvolume/DynamicShadowVolume.h"
 #include "GLMatrix.h"
-
-
 
 #include "BufferObject.h"
 #include "RenderProgs.h"

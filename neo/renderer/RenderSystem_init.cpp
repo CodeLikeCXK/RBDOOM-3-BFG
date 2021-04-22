@@ -86,7 +86,6 @@ idCVar r_useNodeCommonChildren( "r_useNodeCommonChildren", "1", CVAR_RENDERER | 
 idCVar r_useShadowSurfaceScissor( "r_useShadowSurfaceScissor", "1", CVAR_RENDERER | CVAR_BOOL, "scissor shadows by the scissor rect of the interaction surfaces" );
 idCVar r_useCachedDynamicModels( "r_useCachedDynamicModels", "1", CVAR_RENDERER | CVAR_BOOL, "cache snapshots of dynamic models" );
 idCVar r_useSeamlessCubeMap( "r_useSeamlessCubeMap", "1", CVAR_RENDERER | CVAR_BOOL, "use ARB_seamless_cube_map if available" );
-idCVar r_useSRGB( "r_useSRGB", "0", CVAR_RENDERER | CVAR_INTEGER | CVAR_ARCHIVE, "1 = both texture and framebuffer, 2 = framebuffer only, 3 = texture only" );
 idCVar r_maxAnisotropicFiltering( "r_maxAnisotropicFiltering", "8", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "limit aniso filtering" );
 idCVar r_useTrilinearFiltering( "r_useTrilinearFiltering", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "Extra quality filtering" );
 // RB: not used anymore
@@ -262,9 +261,9 @@ idCVar r_shadowMapSunDepthBiasScale( "r_shadowMapSunDepthBiasScale", "0.999991",
 
 // RB: HDR parameters
 #if defined( USE_VULKAN )
-	idCVar r_useHDR( "r_useHDR", "0", CVAR_RENDERER | CVAR_ROM | CVAR_STATIC | CVAR_BOOL, "use high dynamic range rendering" );
+	idCVar r_useHDR( "r_useHDR", "0", CVAR_RENDERER | CVAR_ROM | CVAR_STATIC | CVAR_BOOL, "Can't be changed, is broken on Vulkan backend" );
 #else
-	idCVar r_useHDR( "r_useHDR", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "use high dynamic range rendering" );
+	idCVar r_useHDR( "r_useHDR", "1", CVAR_RENDERER | CVAR_ROM | CVAR_STATIC | CVAR_BOOL, "Can't be changed: Use high dynamic range rendering" );
 #endif
 
 idCVar r_hdrAutoExposure( "r_hdrAutoExposure", "0", CVAR_RENDERER | CVAR_BOOL, "EXPENSIVE: enables adapative HDR tone mapping otherwise the exposure is derived by r_exposure" );
@@ -283,9 +282,9 @@ idCVar r_ldrContrastOffset( "r_ldrContrastOffset", "3", CVAR_RENDERER | CVAR_FLO
 idCVar r_useFilmicPostProcessing( "r_useFilmicPostProcessing", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "apply several post process effects to mimic a filmic look" );
 
 #if defined( USE_VULKAN )
-	idCVar r_forceAmbient( "r_forceAmbient", "0.2", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "render additional ambient pass to make the game less dark", 0.0f, 0.75f );
+	idCVar r_forceAmbient( "r_forceAmbient", "0.4", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "render additional ambient pass to make the game less dark", 0.0f, 0.75f );
 #else
-	idCVar r_forceAmbient( "r_forceAmbient", "0.2", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "render additional ambient pass to make the game less dark", 0.0f, 0.75f );
+	idCVar r_forceAmbient( "r_forceAmbient", "0.4", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "render additional ambient pass to make the game less dark", 0.0f, 0.75f );
 #endif
 
 idCVar r_useSSGI( "r_useSSGI", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "use screen space global illumination and reflections" );
@@ -300,11 +299,12 @@ idCVar r_useHierarchicalDepthBuffer( "r_useHierarchicalDepthBuffer", "1", CVAR_R
 idCVar r_usePBR( "r_usePBR", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "use PBR and Image Based Lighting instead of old Quake 4 style ambient lighting" );
 idCVar r_pbrDebug( "r_pbrDebug", "0", CVAR_RENDERER | CVAR_INTEGER, "show which materials have PBR support (green = PBR, red = oldschool D3)" );
 idCVar r_showViewEnvprobes( "r_showViewEnvprobes", "0", CVAR_RENDERER | CVAR_INTEGER, "1 = displays the bounding boxes of all view environment probes, 2 = show irradiance" );
+idCVar r_showLightGrid( "r_showLightGrid", "0", CVAR_RENDERER | CVAR_INTEGER, "show Quake 3 style light grid points" );
 
 idCVar r_exposure( "r_exposure", "0.5", CVAR_ARCHIVE | CVAR_RENDERER | CVAR_FLOAT, "HDR exposure or LDR brightness [0.0 .. 1.0]", 0.0f, 1.0f );
 // RB end
 
-const char* fileExten[3] = { "tga", "png", "jpg" };
+const char* fileExten[4] = { "tga", "png", "jpg", "exr" };
 const char* envDirection[6] = { "_px", "_nx", "_py", "_ny", "_pz", "_nz" };
 const char* skyDirection[6] = { "_forward", "_back", "_left", "_right", "_up", "_down" };
 
@@ -731,7 +731,17 @@ void R_ReadTiledPixels( int width, int height, byte* buffer, renderView_t* ref =
 	// include extra space for OpenGL padding to word boundaries
 	int sysWidth = renderSystem->GetWidth();
 	int sysHeight = renderSystem->GetHeight();
-	byte* temp = ( byte* )R_StaticAlloc( ( sysWidth + 3 ) * sysHeight * 3 );
+
+	byte* temp = NULL;
+	if( ref && ref->rdflags & RDF_IRRADIANCE )
+	{
+		// * 2 = sizeof( half float )
+		//temp = ( byte* )R_StaticAlloc( RADIANCE_CUBEMAP_SIZE * RADIANCE_CUBEMAP_SIZE * 3 * 2 );
+	}
+	else
+	{
+		temp = ( byte* )R_StaticAlloc( ( sysWidth + 3 ) * sysHeight * 3 );
+	}
 
 	// foresthale 2014-03-01: fixed custom screenshot resolution by doing a more direct render path
 #ifdef BUGFIXEDSCREENSHOTRESOLUTION
@@ -753,8 +763,12 @@ void R_ReadTiledPixels( int width, int height, byte* buffer, renderView_t* ref =
 
 	int originalNativeWidth = glConfig.nativeScreenWidth;
 	int originalNativeHeight = glConfig.nativeScreenHeight;
-	glConfig.nativeScreenWidth = sysWidth;
-	glConfig.nativeScreenHeight = sysHeight;
+
+	//if( !ref || ( ref && !( ref->rdflags & RDF_IRRADIANCE ) ) )
+	{
+		glConfig.nativeScreenWidth = sysWidth;
+		glConfig.nativeScreenHeight = sysHeight;
+	}
 #endif
 
 	// disable scissor, so we don't need to adjust all those rects
@@ -821,15 +835,29 @@ void R_ReadTiledPixels( int width, int height, byte* buffer, renderView_t* ref =
 				h = height - yo;
 			}
 
-			glReadBuffer( GL_FRONT );
-			glReadPixels( 0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, temp );
-
-			int	row = ( w * 3 + 3 ) & ~3;		// OpenGL pads to dword boundaries
-
-			for( int y = 0 ; y < h ; y++ )
+			if( ref && ref->rdflags & RDF_IRRADIANCE )
 			{
-				memcpy( buffer + ( ( yo + y )* width + xo ) * 3,
-						temp + y * row, w * 3 );
+				globalFramebuffers.envprobeFBO->Bind();
+
+				glPixelStorei( GL_PACK_ROW_LENGTH, RADIANCE_CUBEMAP_SIZE );
+				glReadPixels( 0, 0, w, h, GL_RGB, GL_HALF_FLOAT, buffer );
+
+				R_VerticalFlipRGB16F( buffer, w, h );
+
+				Framebuffer::Unbind();
+			}
+			else
+			{
+				glReadBuffer( GL_FRONT );
+				glReadPixels( 0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, temp );
+
+				int	row = ( w * 3 + 3 ) & ~3;		// OpenGL pads to dword boundaries
+
+				for( int y = 0 ; y < h ; y++ )
+				{
+					memcpy( buffer + ( ( yo + y )* width + xo ) * 3,
+							temp + y * row, w * 3 );
+				}
 			}
 		}
 	}
@@ -839,8 +867,11 @@ void R_ReadTiledPixels( int width, int height, byte* buffer, renderView_t* ref =
 	// discard anything currently on the list
 	tr.SwapCommandBuffers( NULL, NULL, NULL, NULL, NULL, NULL );
 
-	glConfig.nativeScreenWidth = originalNativeWidth;
-	glConfig.nativeScreenHeight = originalNativeHeight;
+	if( !ref || ( ref && !( ref->rdflags & RDF_IRRADIANCE ) ) )
+	{
+		glConfig.nativeScreenWidth = originalNativeWidth;
+		glConfig.nativeScreenHeight = originalNativeHeight;
+	}
 #endif
 
 	r_useScissor.SetBool( true );
@@ -874,7 +905,11 @@ void idRenderSystemLocal::TakeScreenshot( int width, int height, const char* fil
 	int pix = width * height;
 	const int bufferSize = pix * 3 + 18;
 
-	if( exten == PNG )
+	if( exten == EXR )
+	{
+		buffer = ( byte* )R_StaticAlloc( pix * 3 * 2 );
+	}
+	else if( exten == PNG )
 	{
 		buffer = ( byte* )R_StaticAlloc( pix * 3 );
 	}
@@ -886,7 +921,7 @@ void idRenderSystemLocal::TakeScreenshot( int width, int height, const char* fil
 
 	if( blends <= 1 )
 	{
-		if( exten == PNG )
+		if( exten == PNG || exten == EXR )
 		{
 			R_ReadTiledPixels( width, height, buffer, ref );
 		}
@@ -944,7 +979,12 @@ void idRenderSystemLocal::TakeScreenshot( int width, int height, const char* fil
 		r_jitter.SetBool( false );
 	}
 
-	if( exten == PNG )
+	if( exten == EXR )
+	{
+		R_WriteEXR( finalFileName, buffer, 3, width, height, "fs_basepath" );
+		//R_WritePNG( finalFileName, buffer, 3, width, height, false, "fs_basepath" );
+	}
+	else if( exten == PNG )
 	{
 		R_WritePNG( finalFileName, buffer, 3, width, height, false, "fs_basepath" );
 	}
@@ -974,6 +1014,33 @@ void idRenderSystemLocal::TakeScreenshot( int width, int height, const char* fil
 	R_StaticFree( buffer );
 
 	takingScreenshot = false;
+}
+
+// RB begin
+byte* idRenderSystemLocal::CaptureRenderToBuffer( int width, int height, renderView_t* ref )
+{
+	byte*		buffer;
+
+	takingScreenshot = true;
+
+	int pix = width * height;
+	const int bufferSize = pix * 3 + 18;
+
+	// HDR only for now
+	//if( exten == EXR )
+	{
+		buffer = ( byte* )R_StaticAlloc( pix * 3 * 2 );
+	}
+	//else if( exten == PNG )
+	//{
+	//	buffer = ( byte* )R_StaticAlloc( pix * 3 );
+	//}
+
+	R_ReadTiledPixels( width, height, buffer, ref );
+
+	takingScreenshot = false;
+
+	return buffer;
 }
 
 /*
@@ -1234,11 +1301,6 @@ void R_EnvShot_f( const idCmdArgs& args )
 }
 
 //============================================================================
-
-static idMat3		cubeAxis[6];
-
-
-
 
 void R_TransformCubemap( const char* orgDirection[6], const char* orgDir, const char* destDirection[6], const char* destDir, const char* baseName )
 {
@@ -1658,6 +1720,7 @@ void idRenderSystemLocal::Clear()
 	guiRecursionLevel = 0;
 	guiModel = NULL;
 	memset( gammaTable, 0, sizeof( gammaTable ) );
+	memset( &cubeAxis, 0, sizeof( cubeAxis ) ); // RB
 	takingScreenshot = false;
 
 	if( unitSquareTriangles != NULL )
@@ -1685,6 +1748,11 @@ void idRenderSystemLocal::Clear()
 	}
 
 	frontEndJobList = NULL;
+
+	// RB
+	envprobeJobList = NULL;
+	envprobeJobs.Clear();
+	lightGridJobs.Clear();
 }
 
 /*
@@ -1868,7 +1936,7 @@ static srfTriangles_t* R_MakeZeroOneSphereTris()
 
 			verts[ numVerts ].SetTexCoord( s * S, r * R );
 			verts[ numVerts ].xyz = idVec3( x, y, z ) * radius;
-			verts[ numVerts ].SetNormal( -x, -y, -z );
+			verts[ numVerts ].SetNormal( x, y, z );
 			verts[ numVerts ].SetColor( 0xffffffff );
 			numVerts++;
 
@@ -2000,6 +2068,38 @@ void idRenderSystemLocal::Init()
 	identitySpace.modelMatrix[1 * 4 + 1] = 1.0f;
 	identitySpace.modelMatrix[2 * 4 + 2] = 1.0f;
 
+	// set cubemap axis for cubemap sampling tools
+
+	// +X
+	cubeAxis[0][0][0] = 1;
+	cubeAxis[0][1][2] = 1;
+	cubeAxis[0][2][1] = 1;
+
+	// -X
+	cubeAxis[1][0][0] = -1;
+	cubeAxis[1][1][2] = -1;
+	cubeAxis[1][2][1] = 1;
+
+	// +Y
+	cubeAxis[2][0][1] = 1;
+	cubeAxis[2][1][0] = -1;
+	cubeAxis[2][2][2] = -1;
+
+	// -Y
+	cubeAxis[3][0][1] = -1;
+	cubeAxis[3][1][0] = -1;
+	cubeAxis[3][2][2] = 1;
+
+	// +Z
+	cubeAxis[4][0][2] = 1;
+	cubeAxis[4][1][0] = -1;
+	cubeAxis[4][2][1] = 1;
+
+	// -Z
+	cubeAxis[5][0][2] = -1;
+	cubeAxis[5][1][0] = 1;
+	cubeAxis[5][2][1] = 1;
+
 	// make sure the tr.unitSquareTriangles data is current in the vertex / index cache
 	if( unitSquareTriangles == NULL )
 	{
@@ -2027,6 +2127,7 @@ void idRenderSystemLocal::Init()
 	}
 
 	frontEndJobList = parallelJobManager->AllocJobList( JOBLIST_RENDERER_FRONTEND, JOBLIST_PRIORITY_MEDIUM, 2048, 0, NULL );
+	envprobeJobList = parallelJobManager->AllocJobList( JOBLIST_UTILITY, JOBLIST_PRIORITY_MEDIUM, 2048, 0, NULL ); // RB
 
 	bInitialized = true;
 
