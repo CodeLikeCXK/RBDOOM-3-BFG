@@ -40,9 +40,7 @@ uniform sampler2D samp3 : register(s3); // texture 3 is the BRDF LUT
 uniform sampler2D samp4 : register(s4); // texture 4 is SSAO
 
 uniform sampler2D	samp7 : register(s7); // texture 7 is the irradiance cube map
-uniform sampler2D	samp8 : register(s8); // texture 8 is the radiance cube map 1
-uniform sampler2D	samp9 : register(s9); // texture 9 is the radiance cube map 2
-uniform sampler2D	samp10 : register(s10); // texture 10 is the radiance cube map 3
+uniform sampler2D	samp8 : register(s8); // texture 8 is the radiance cube map
 
 struct PS_IN 
 {
@@ -265,19 +263,15 @@ void main( PS_IN fragment, out PS_OUT result )
 	{
 		float           v;
 
-		// walls can be sampled behind the grid sometimes so avoid negative weights
-		v = max( 0, lightOrigin[i] * ( 1.0 / lightGridSize[i] ) );
+		v = lightOrigin[i] * ( 1.0 / lightGridSize[i] );
 		gridCoord[i] = int( floor( v ) );
 		frac[ i ] = v - gridCoord[ i ];
 
-		/*
 		if( gridCoord[i] < 0 )
 		{
 			gridCoord[i] = 0;
 		}
-		else
-		*/
-		if( gridCoord[i] >= lightGridBounds[i] - 1 )
+		else if( gridCoord[i] >= lightGridBounds[i] - 1 )
 		{
 			gridCoord[i] = lightGridBounds[i] - 1;
 		}
@@ -332,33 +326,12 @@ void main( PS_IN fragment, out PS_OUT result )
 			}
 		}
 
-		// build P
-		//float3 P = lightGridOrigin + ( gridCoord2[0] * gridStep[0] + gridCoord2[1] * gridStep[1] + gridCoord2[2] * gridStep[2] );
-
 		float2 atlasOffset;
 
 		atlasOffset.x = ( gridCoord2[0] * gridStep[0] + gridCoord2[2] * gridStep[1] ) * invXZ;
 		atlasOffset.y = ( gridCoord2[1] * invY );
 
-		// offset by one pixel border bleed size for linear filtering
-#if 1
-		// rpScreenCorrectionFactor.w = probeSize factor accounting account offset border, e.g = ( 16 / 18 ) = 0.8888
-		float2 octCoordNormalizedToTextureDimensions = ( normalizedOctCoordZeroOne + atlasOffset ) * rpScreenCorrectionFactor.w;
-
-		// skip by default 2 pixels for each grid cell and offset the start position by (1,1)
-		// rpScreenCorrectionFactor.z = borderSize e.g = 2
-		float2 probeTopLeftPosition;
-		probeTopLeftPosition.x = ( gridCoord2[0] * gridStep[0] + gridCoord2[2] * gridStep[1] ) * rpScreenCorrectionFactor.z + rpScreenCorrectionFactor.z * 0.5;
-		probeTopLeftPosition.y = ( gridCoord2[1] ) * rpScreenCorrectionFactor.z + rpScreenCorrectionFactor.z * 0.5;
-
-		float2 normalizedProbeTopLeftPosition = probeTopLeftPosition * rpCascadeDistances.zw;
-
-		float2 atlasCoord = normalizedProbeTopLeftPosition + octCoordNormalizedToTextureDimensions;
-#else
-		float2 atlasCoord = normalizedOctCoordZeroOne + atlasOffset;
-#endif
-
-		float3 color = texture( samp7, atlasCoord, 0 ).rgb;
+		float3 color = tex2D( samp7, normalizedOctCoordZeroOne + atlasOffset ).rgb;
 
 		if( ( color.r + color.g + color.b ) < 0.0001 )
 		{
@@ -384,19 +357,15 @@ void main( PS_IN fragment, out PS_OUT result )
 
 	// evaluate specular IBL
 
-	// 512^2 = 10 mips
-	// however we can't use the last 3 mips with octahedrons because the quality suffers too much
-	// so it is 7 - 1
-	const float MAX_REFLECTION_LOD = 6.0;
+	// should be 8 = numMips - 1, 256^2 = 9 mips
+	const float MAX_REFLECTION_LOD = 10.0;
 	float mip = clamp( ( roughness * MAX_REFLECTION_LOD ), 0.0, MAX_REFLECTION_LOD );
 	//float mip = 0.0;
 
 	normalizedOctCoord = octEncode( reflectionVector );
 	normalizedOctCoordZeroOne = ( normalizedOctCoord + float2( 1.0 ) ) * 0.5;
 
-	float3 radiance = textureLod( samp8, normalizedOctCoordZeroOne, mip ).rgb * rpLocalLightOrigin.x;
-	radiance += textureLod( samp9, normalizedOctCoordZeroOne, mip ).rgb * rpLocalLightOrigin.y;
-	radiance += textureLod( samp10, normalizedOctCoordZeroOne, mip ).rgb * rpLocalLightOrigin.z;
+	float3 radiance = textureLod( samp8, normalizedOctCoordZeroOne, mip ).rgb;
 	//radiance = float3( 0.0 );
 
 	// RB: HACK dim down room radiance by better local irradiance brightness

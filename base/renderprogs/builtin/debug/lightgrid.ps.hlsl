@@ -75,6 +75,8 @@ int3 GetBaseGridCoord( float3 origin )
 	return pos;
 }
 
+
+
 void main( PS_IN fragment, out PS_OUT result )
 {
 	const int LIGHTGRID_IRRADIANCE_SIZE	= 32;
@@ -106,24 +108,7 @@ void main( PS_IN fragment, out PS_OUT result )
 	normalizedOctCoordZeroOne.x += ( gridCoord[0] * gridStep[0] + gridCoord[2] * gridStep[1] ) * invXZ;
 	normalizedOctCoordZeroOne.y += ( gridCoord[1] * invY );
 
-	// offset by one pixel border bleed size for linear filtering
-#if 1
-	// rpScreenCorrectionFactor.x = probeSize - borderSize, e.g. ( 18 - 2 ) = 16
-	// rpScreenCorrectionFactor.y = probeSize including border, e.g = 18
-	// rpScreenCorrectionFactor.z = borderSize e.g = 2
-	// rpScreenCorrectionFactor.w = probeSize factor accounting account offset border, e.g = ( 16 / 18 ) = 0.8888
-	float2 octCoordNormalizedToTextureDimensions = normalizedOctCoordZeroOne * rpScreenCorrectionFactor.w;
-
-	float2 probeTopLeftPosition;
-	probeTopLeftPosition.x = ( gridCoord[0] * gridStep[0] + gridCoord[2] * gridStep[1] ) * rpScreenCorrectionFactor.z + rpScreenCorrectionFactor.z * 0.5;
-	probeTopLeftPosition.y = ( gridCoord[1] ) * rpScreenCorrectionFactor.z + rpScreenCorrectionFactor.z * 0.5;
-
-	float2 normalizedProbeTopLeftPosition = probeTopLeftPosition * rpCascadeDistances.zw;
-
-	normalizedOctCoordZeroOne.xy = normalizedProbeTopLeftPosition + octCoordNormalizedToTextureDimensions;
-#endif
-
-	float4 envMap = texture( samp0, normalizedOctCoordZeroOne, 0 );
+	float4 envMap = tex2D( samp0, normalizedOctCoordZeroOne );
 
 	result.color = float4( envMap.xyz, 1.0f ) * 1.0 * fragment.color;
 }

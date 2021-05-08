@@ -90,6 +90,10 @@ void main( PS_IN fragment, out PS_OUT result )
 	half lambert = ldotN;
 #endif
 
+   //add toon lambert
+   half lambert = lerp( ldotN, halfLdotN, 0.5 );
+   float toonLambert = Toon_Lambert( lambert );
+
 	const half specularPower = 10.0f;
 	half hDotN = dot3( normalize( fragment.texcoord6.xyz ), localNormal );
 	// RB: added abs
@@ -99,6 +103,7 @@ void main( PS_IN fragment, out PS_OUT result )
 	half3 specularColor = specMap.xyz * specularContribution * ( rpSpecularModifier.xyz );
 	half3 lightColor = sRGBToLinearRGB( lightProj.xyz * lightFalloff.xyz );
 
-	result.color.xyz = ( diffuseColor + specularColor ) * lightColor * fragment.color.xyz;
+    //add toon lambert and *0.25
+	result.color.xyz = ( diffuseColor + specularColor ) * toonLambert *0.25* lightColor * fragment.color.xyz;
 	result.color.w = 1.0;
 }

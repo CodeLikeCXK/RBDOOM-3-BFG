@@ -3,7 +3,7 @@
 
 Doom 3 BFG Edition GPL Source Code
 Copyright (C) 1993-2012 id Software LLC, a ZeniMax Media company.
-Copyright (C) 2013-2021 Robert Beckebans
+Copyright (C) 2013-2020 Robert Beckebans
 
 This file is part of the Doom 3 BFG Edition GPL Source Code ("Doom 3 BFG Edition Source Code").
 
@@ -40,9 +40,7 @@ uniform sampler2D samp3 : register(s3); // texture 3 is the BRDF LUT
 uniform sampler2D samp4 : register(s4); // texture 4 is SSAO
 
 uniform sampler2D	samp7 : register(s7); // texture 7 is the irradiance cube map
-uniform sampler2D	samp8 : register(s8); // texture 8 is the radiance cube map 1
-uniform sampler2D	samp9 : register(s9); // texture 9 is the radiance cube map 2
-uniform sampler2D	samp10 : register(s10); // texture 10 is the radiance cube map 3
+uniform sampler2D	samp8 : register(s8); // texture 8 is the radiance cube map
 
 struct PS_IN 
 {
@@ -54,7 +52,6 @@ struct PS_IN
 	half4 texcoord4	: TEXCOORD4_centroid;
 	half4 texcoord5	: TEXCOORD5_centroid;
 	half4 texcoord6	: TEXCOORD6_centroid;
-	half4 texcoord7	: TEXCOORD7_centroid;
 	half4 color		: COLOR0;
 };
 
@@ -64,82 +61,6 @@ struct PS_OUT
 };
 // *INDENT-ON*
 
-
-// RB: TODO OPTIMIZE
-// this is a straight port of idBounds::RayIntersection
-bool AABBRayIntersection( float3 b[2], float3 start, float3 dir, out float scale )
-{
-	int i, ax0, ax1, ax2, side, inside;
-	float f;
-	float3 hit;
-
-	ax0 = -1;
-	inside = 0;
-	for( i = 0; i < 3; i++ )
-	{
-		if( start[i] < b[0][i] )
-		{
-			side = 0;
-		}
-		else if( start[i] > b[1][i] )
-		{
-			side = 1;
-		}
-		else
-		{
-			inside++;
-			continue;
-		}
-		if( dir[i] == 0.0f )
-		{
-			continue;
-		}
-
-		f = ( start[i] - b[side][i] );
-
-		if( ax0 < 0 || abs( f ) > abs( scale * dir[i] ) )
-		{
-			scale = - ( f / dir[i] );
-			ax0 = i;
-		}
-	}
-
-	if( ax0 < 0 )
-	{
-		scale = 0.0f;
-
-		// return true if the start point is inside the bounds
-		return ( inside == 3 );
-	}
-
-	ax1 = ( ax0 + 1 ) % 3;
-	ax2 = ( ax0 + 2 ) % 3;
-	hit[ax1] = start[ax1] + scale * dir[ax1];
-	hit[ax2] = start[ax2] + scale * dir[ax2];
-
-	return ( hit[ax1] >= b[0][ax1] && hit[ax1] <= b[1][ax1] &&
-			 hit[ax2] >= b[0][ax2] && hit[ax2] <= b[1][ax2] );
-}
-
-
-float2 OctTexCoord( float3 worldDir )
-{
-	float2 normalizedOctCoord = octEncode( worldDir );
-	float2 normalizedOctCoordZeroOne = ( normalizedOctCoord + float2( 1.0 ) ) * 0.5;
-
-	// offset by one pixel border bleed size for linear filtering
-#if 0
-	// texcoord sizes in rpCascadeDistances are not valid
-	float2 octCoordNormalizedToTextureDimensions = ( normalizedOctCoordZeroOne * ( rpCascadeDistances.x - float( 2.0 ) ) ) / rpCascadeDistances.xy;
-
-	float2 probeTopLeftPosition = float2( 1.0, 1.0 );
-	float2 normalizedProbeTopLeftPosition = probeTopLeftPosition * rpCascadeDistances.zw;
-
-	normalizedOctCoordZeroOne.xy = normalizedProbeTopLeftPosition + octCoordNormalizedToTextureDimensions;
-#endif
-
-	return normalizedOctCoordZeroOne;
-}
 
 void main( PS_IN fragment, out PS_OUT result )
 {
@@ -165,42 +86,12 @@ void main( PS_IN fragment, out PS_OUT result )
 	globalNormal.z = dot3( localNormal, fragment.texcoord6 );
 	globalNormal = normalize( globalNormal );
 
-	float3 globalPosition = fragment.texcoord7.xyz;
+	float3 globalEye = normalize( fragment.texcoord3.xyz );
 
-	float3 globalView = normalize( rpGlobalEyePos.xyz - globalPosition );
+	float3 reflectionVector = globalNormal * dot3( globalEye, globalNormal );
+	reflectionVector = normalize( ( reflectionVector * 2.0f ) - globalEye );
 
-	float3 reflectionVector = globalNormal * dot3( globalView, globalNormal );
-	reflectionVector = normalize( ( reflectionVector * 2.0f ) - globalView );
-
-#if 0
-	// parallax box correction using portal area bounds
-	float hitScale = 0.0;
-	float3 bounds[2];
-	bounds[0].x = rpWobbleSkyX.x;
-	bounds[0].y = rpWobbleSkyX.y;
-	bounds[0].z = rpWobbleSkyX.z;
-
-	bounds[1].x = rpWobbleSkyY.x;
-	bounds[1].y = rpWobbleSkyY.y;
-	bounds[1].z = rpWobbleSkyY.z;
-
-	// global fragment position
-	float3 rayStart = fragment.texcoord7.xyz;
-
-	// we can't start inside the box so move this outside and use the reverse path
-	rayStart += reflectionVector * 10000.0;
-
-	// only do a box <-> ray intersection test if we use a local cubemap
-	if( ( rpWobbleSkyX.w > 0.0 ) && AABBRayIntersection( bounds, rayStart, -reflectionVector, hitScale ) )
-	{
-		float3 hitPoint = rayStart - reflectionVector * hitScale;
-
-		// rpWobbleSkyZ is cubemap center
-		reflectionVector = hitPoint - rpWobbleSkyZ.xyz;
-	}
-#endif
-
-	half vDotN = saturate( dot3( globalView, globalNormal ) );
+	half vDotN = saturate( dot3( globalEye, globalNormal ) );
 
 #if defined( USE_PBR )
 	const half metallic = specMapSRGB.g;
@@ -245,7 +136,7 @@ void main( PS_IN fragment, out PS_OUT result )
 
 #endif
 
-	//diffuseColor = half3( 1.0, 1.0, 1.0 );
+	diffuseColor = half3( 1.0, 1.0, 1.0 );
 	//diffuseColor = half3( 0.0, 0.0, 0.0 );
 
 	// calculate the screen texcoord in the 0.0 to 1.0 range
@@ -258,25 +149,23 @@ void main( PS_IN fragment, out PS_OUT result )
 
 	// evaluate diffuse IBL
 
-	float2 normalizedOctCoordZeroOne = OctTexCoord( globalNormal );
+	float2 normalizedOctCoord = octEncode( globalNormal );
+	float2 normalizedOctCoordZeroOne = ( normalizedOctCoord + float2( 1.0 ) ) * 0.5;
 
 	float3 irradiance = tex2D( samp7, normalizedOctCoordZeroOne ).rgb;
 	float3 diffuseLight = ( kD * irradiance * diffuseColor ) * ao * ( rpDiffuseModifier.xyz * 1.0 );
 
 	// evaluate specular IBL
 
-	// 512^2 = 10 mips
-	// however we can't use the last 3 mips with octahedrons because the quality suffers too much
-	// so it is 7 - 1
-	const float MAX_REFLECTION_LOD = 6.0;
+	// should be 8 = numMips - 1, 256^2 = 9 mips
+	const float MAX_REFLECTION_LOD = 10.0;
 	float mip = clamp( ( roughness * MAX_REFLECTION_LOD ), 0.0, MAX_REFLECTION_LOD );
 	//float mip = 0.0;
 
-	normalizedOctCoordZeroOne = OctTexCoord( reflectionVector );
+	normalizedOctCoord = octEncode( reflectionVector );
+	normalizedOctCoordZeroOne = ( normalizedOctCoord + float2( 1.0 ) ) * 0.5;
 
-	float3 radiance = textureLod( samp8, normalizedOctCoordZeroOne, mip ).rgb * rpLocalLightOrigin.x;
-	radiance += textureLod( samp9, normalizedOctCoordZeroOne, mip ).rgb * rpLocalLightOrigin.y;
-	radiance += textureLod( samp10, normalizedOctCoordZeroOne, mip ).rgb * rpLocalLightOrigin.z;
+	float3 radiance = textureLod( samp8, normalizedOctCoordZeroOne, mip ).rgb;
 	//radiance = float3( 0.0 );
 
 	float2 envBRDF  = texture( samp3, float2( max( vDotN, 0.0 ), roughness ) ).rg;
@@ -290,7 +179,7 @@ void main( PS_IN fragment, out PS_OUT result )
 	float specAO = ComputeSpecularAO( vDotN, ao, roughness );
 	float3 specularLight = radiance * ( kS * envBRDF.x + float3( envBRDF.y ) ) * specAO * ( rpSpecularModifier.xyz * 0.5 );
 
-#if 1
+#if 0
 	// Marmoset Horizon Fade trick
 	const half horizonFade = 1.3;
 	half horiz = saturate( 1.0 + horizonFade * saturate( dot3( reflectionVector, globalNormal ) ) );
@@ -299,13 +188,24 @@ void main( PS_IN fragment, out PS_OUT result )
 #endif
 
 	half3 lightColor = sRGBToLinearRGB( rpAmbientColor.rgb );
-	//half3 lightColor = ( rpAmbientColor.rgb );
 
-	//result.color.rgb = diffuseLight;
-	//result.color.rgb = diffuseLight * lightColor;
-	//result.color.rgb = specularLight;
-	result.color.rgb = ( diffuseLight + specularLight * horiz ) * lightColor * fragment.color.rgb;
-	//result.color.rgb = localNormal.xyz * 0.5 + 0.5;
-	//result.color.rgb = float3( ao );
+
+
+	// same global vector as in old D3 ambient_lighting
+	float3 lightVector = normalize( float3( 0.0f, 0.5f, 1.0f ) );
+	float ndotL = dot( globalNormal, lightVector );
+	float toonLambert = Toon_Lambert( ndotL );
+
+	half3 halfAngleVector = normalize( lightVector + globalEye );
+	half hdotN = clamp( dot3( halfAngleVector, globalNormal ), 0.0, 1.0 );
+
+	half rim =  1.0f - saturate( hdotN );
+	half rimPower = 8.0;
+	//half3 rimColor = half3( 1.0 );
+	half3 rimColor = irradiance;
+	half3 rimLight = sRGBToLinearRGB( half3( 0.125 ) * 1.5 ) * pow( rim, rimPower ) * rimColor * lightColor * 200.0;
+
+	result.color.rgb = ( ( diffuseLight + specularLight ) * toonLambert * lightColor + rimLight ) * fragment.color.rgb  * 0.25;
+
 	result.color.w = fragment.color.a;
 }

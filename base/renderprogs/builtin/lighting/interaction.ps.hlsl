@@ -28,7 +28,6 @@ If you have questions concerning this license or the applicable additional terms
 */
 
 #include "renderprogs/global.inc.hlsl"
-
 #include "renderprogs/BRDF.inc.hlsl"
 
 
@@ -161,7 +160,31 @@ void main( PS_IN fragment, out PS_OUT result )
 	//half3 diffuseColor = mix( diffuseMap, F0, metal ) * rpDiffuseModifier.xyz;
 	half3 diffuseLight = diffuseColor * lambert * ( rpDiffuseModifier.xyz );
 
-	float3 color = ( diffuseLight + specularLight ) * lightColor * fragment.color.rgb;
+
+
+	// create harsh lighting with visible shading bands
+	float toonLambert = Toon_Lambert( lambert );
+
+	diffuseLight = diffuseColor * toonLambert * ( rpDiffuseModifier.xyz );
+
+	//float toon = 0.5 * smoothstep( 0.66, 0.67, lambert ) + 0.5;
+	float outline = smoothstep( 0.2, 0.21, localNormal.z );
+
+	//float3 color = ( diffuseLight + specularLight ) * lightColor * fragment.color.rgb * shadow * toon * outline;
+
+	float rim =  1.0f - saturate( hdotN );
+	float rimPower = 8.0;
+	float3 rimColor = lightColor;
+	float3 rimLight = sRGBToLinearRGB( float3( 0.125 ) * 1.5 ) * pow( rim, rimPower ) * rimColor * ( rpDiffuseModifier.xyz * 1.0 );
+
+	//specularLight = float3( 0.0 );
+	specularLight = ( rrrr / ( 4.0 * PI * D * D * VFapprox ) ) * toonLambert * reflectColor;
+	//add a smoothstep for specular light
+	specularLight = saturate(smoothstep(0.5f-roughness, 0.5f+roughness, specularLight));
+
+	float3 color = ( ( diffuseLight + specularLight ) * lightColor * 0.25) * fragment.color.rgb + rimLight * fragment.color.rgb * outline  * 0.25;
+	//float3 color = rimColor * fragment.color.rgb;
+
 
 	result.color.rgb = color;
 	result.color.a = 1.0;
