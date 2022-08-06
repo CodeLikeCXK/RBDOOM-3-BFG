@@ -2599,7 +2599,7 @@ idCVar g_recordTrace( "g_recordTrace", "0", CVAR_BOOL, "" );
 idGameLocal::RunSharedThink
 ================
 */
-void idGameLocal::RunSharedThink( void )
+void idGameLocal::RunSharedThink()
 {
 	idEntity* ent;
 	for( ent = activeEntities.Next(); ent != NULL; ent = ent->activeNode.Next() )
@@ -5014,7 +5014,7 @@ idCamera* idGameLocal::GetCamera() const
 idGameLocal::SkipCinematic
 =============
 */
-bool idGameLocal::SkipCinematic( void )
+bool idGameLocal::SkipCinematic()
 {
 	if( camera )
 	{
