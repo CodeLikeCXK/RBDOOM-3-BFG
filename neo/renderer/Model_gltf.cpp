@@ -52,6 +52,7 @@ static const idAngles axisTransformAngels = idAngles( 0.0f, 0.0f, 90 );
 static const idMat4 axisTransform( axisTransformAngels.ToMat3( ), vec3_origin );
 static idRenderModelGLTF* lastMeshFromFile = nullptr;
 
+
 bool idRenderModelStatic::ConvertGltfMeshToModelsurfaces( const gltfMesh* mesh )
 {
 	return false;
@@ -1408,9 +1409,9 @@ void idRenderModelGLTF::UpdateSurface( const struct renderEntity_s* ent, const i
 #else
 
 	bounds.Clear( );
-	for( int i = 0; i < numMeshJoints; i++ )
+	for (int i = 0; i < jointIds.Num(); i++) 
 	{
-		const idJointMat& joint = entJoints[meshJoints[i]];
+		const idJointMat& joint = entJoints[i];
 		bounds.AddPoint( joint.GetTranslation( ) );
 	}
 	bounds.ExpandSelf( maxJointVertDist );
