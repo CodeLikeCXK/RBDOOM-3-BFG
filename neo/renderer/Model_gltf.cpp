@@ -52,7 +52,6 @@ static const idAngles axisTransformAngels = idAngles( 0.0f, 0.0f, 90 );
 static const idMat4 axisTransform( axisTransformAngels.ToMat3( ), vec3_origin );
 static idRenderModelGLTF* lastMeshFromFile = nullptr;
 
-
 bool idRenderModelStatic::ConvertGltfMeshToModelsurfaces( const gltfMesh* mesh )
 {
 	return false;
@@ -164,18 +163,7 @@ void idRenderModelGLTF::InitFromFile( const char* fileName )
 	model_state = DM_STATIC;
 
 	gltfManager::ExtractIdentifier( gltfFileName, meshID, meshName );
-
-	if( gltfParser->currentFile.Length() )
-	{
-		if( gltfParser->currentAsset && gltfParser->currentFile != gltfFileName )
-		{
-			common->FatalError( "multiple GLTF file loading not supported" );
-		}
-	}
-	else
-	{
-		gltfParser->Load( gltfFileName );
-	}
+	gltfParser->Load( gltfFileName );
 
 	timeStamp = fileSystem->GetTimestamp( gltfFileName );
 	data = gltfParser->currentAsset;
@@ -277,7 +265,6 @@ bool idRenderModelGLTF::LoadBinaryModel( idFile* file, const ID_TIME_T sourceTim
 	fileExclusive = false; // not written.
 	root = nullptr;
 
-	//we should still load the scene information ?
 	if( !idRenderModelStatic::LoadBinaryModel( file, sourceTimeStamp ) )
 	{
 		return false;
@@ -296,34 +283,6 @@ bool idRenderModelGLTF::LoadBinaryModel( idFile* file, const ID_TIME_T sourceTim
 
 	idStr dataFilename;
 	file->ReadString( dataFilename );
-
-	if( gltfParser->currentFile.Length( ) )
-	{
-		if( gltfParser->currentAsset && gltfParser->currentFile != dataFilename )
-		{
-			common->FatalError( "multiple GLTF file loading not supported" );
-		}
-	}
-	else
-	{
-		gltfParser->Load( dataFilename );
-	}
-
-	data = gltfParser->currentAsset;
-	if( rootID != -1 )
-	{
-		root = data->GetNode( gltf_ModelSceneName.GetString(), rootID );
-	}
-	else
-	{
-		root = new gltfNode();
-		root->name = gltf_ModelSceneName.GetString();
-		gltfScene scene;
-		data->GetSceneId( root->name, &scene );
-		root->children.Append( scene.nodes );
-	}
-
-	assert( root );
 
 	int animCnt;
 	file->ReadBig( animCnt );
@@ -363,7 +322,7 @@ bool idRenderModelGLTF::LoadBinaryModel( idFile* file, const ID_TIME_T sourceTim
 	}
 	else
 	{
-		if( root->skin == -1 && hasAnimations && !bones.Num() )
+		if( hasAnimations && !bones.Num() )
 		{
 			bones.Clear( );
 			bones.Append( rootID );
@@ -643,18 +602,7 @@ idFile_Memory* idRenderModelGLTF::GetAnimBin( idStr animName ,  const ID_TIME_T 
 	idStr gltfFileName = idStr( animName );
 	idStr name;
 	gltfManager::ExtractIdentifier( gltfFileName, id, name );
-
-	if( gltfParser->currentFile.Length( ) )
-	{
-		if( gltfParser->currentAsset && gltfParser->currentFile != gltfFileName )
-		{
-			common->FatalError( "multiple GLTF file loading not supported" );
-		}
-	}
-	else
-	{
-		gltfParser->Load( gltfFileName );
-	}
+	gltfParser->Load( gltfFileName );
 
 	gltfData* data = gltfParser->currentAsset;
 
@@ -1407,9 +1355,8 @@ void idRenderModelGLTF::UpdateSurface( const struct renderEntity_s* ent, const i
 	_mm_store_ss( tri->bounds.ToFloatPtr( ) + 5, _mm_splat_ps( maxZ, 3 ) );
 
 #else
-
 	bounds.Clear( );
-	for (int i = 0; i < jointIds.Num(); i++) 
+	for( int i = 0; i < jointIds.Num( ); i++ )
 	{
 		const idJointMat& joint = entJoints[i];
 		bounds.AddPoint( joint.GetTranslation( ) );
