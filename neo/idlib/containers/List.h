@@ -203,6 +203,39 @@ public:
 		memTag = ( byte )tag_;
 	};
 
+
+
+//merge HarrievG's gltf code from https://github.com/HarrievG/RBDOOM-3-BFG/blob/679-gltf-map-support2/neo/idlib/containers/List.h
+struct Iterator
+	{
+		_type_* p;
+		_type_& operator*()
+		{
+			return *p;
+		}
+		bool operator != ( const Iterator& rhs )
+		{
+			return p != rhs.p;
+		}
+		void operator ++()
+		{
+			++p;
+		}
+	};
+
+	auto begin() const   // const version
+	{
+		return Iterator{list};
+	};
+	auto end() const   // const version
+	{
+		return Iterator{list + Num()};
+	};
+
+
+
+
+
 	// Begin/End methods for range-based for loops.
 	_type_* begin()
 	{
