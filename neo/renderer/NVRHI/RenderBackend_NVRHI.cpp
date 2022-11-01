@@ -160,7 +160,7 @@ void idRenderBackend::Init()
 	commandList->close();
 	deviceManager->GetDevice()->executeCommandList( commandList );
 
-	fhImmediateMode::Init();
+	fhImmediateMode::Init( commandList );
 
 	// allocate the frame data, which may be more if smp is enabled
 	R_InitFrameData();
@@ -178,7 +178,11 @@ void idRenderBackend::Init()
 	prevMVP[1] = renderMatrix_identity;
 	prevViewsValid = false;
 
+	currentVertexBuffer = nullptr;
+	currentIndexBuffer = nullptr;
 	currentJointBuffer = nullptr;
+	currentVertexOffset = 0;
+	currentIndexOffset = 0;
 	currentJointOffset = 0;
 
 	// RB: prepare ImGui system
