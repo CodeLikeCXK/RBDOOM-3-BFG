@@ -33,10 +33,8 @@ If you have questions concerning this license or the applicable additional terms
 #include "Common_local.h"
 #include "../imgui/BFGimgui.h"
 
-#if defined( USE_NVRHI )
-	#include <sys/DeviceManager.h>
-	extern DeviceManager* deviceManager;
-#endif
+#include <sys/DeviceManager.h>
+extern DeviceManager* deviceManager;
 
 #define	CON_TEXTSIZE			0x30000
 #define	NUM_CON_TIMES			4
@@ -325,7 +323,7 @@ float idConsoleLocal::DrawFPS( float y )
 		if( com_showFPS.GetInteger() > 2 )
 		{
 			statsWindowWidth += 230;
-			statsWindowHeight += 105;
+			statsWindowHeight += 120;
 		}
 
 		ImVec2 pos;
@@ -354,7 +352,6 @@ float idConsoleLocal::DrawFPS( float y )
 
 		ImGui::Begin( "Performance Stats" );
 
-#if defined( USE_NVRHI )
 		static const int gfxNumValues = 3;
 
 		static const char* gfxValues[gfxNumValues] =
@@ -365,12 +362,6 @@ float idConsoleLocal::DrawFPS( float y )
 		};
 
 		const char* API = gfxValues[ int( deviceManager->GetGraphicsAPI() ) ];
-
-#elif defined( USE_VULKAN )
-		const char* API = "Vulkan";
-#else
-		const char* API = "OpenGL";
-#endif
 
 		extern idCVar r_antiAliasing;
 
@@ -434,14 +425,20 @@ float idConsoleLocal::DrawFPS( float y )
 
 		ImGui::TextColored( colorGold, "Device: %s", deviceManager->GetRendererString() );
 
-		ImGui::TextColored( colorLtGrey, "GENERAL: views:%i draws:%i tris:%i (shdw:%i)",
+		ImGui::TextColored( colorLtGrey, "GENERAL: views:%i draws:%i tris:%i",
 							commonLocal.stats_frontend.c_numViews,
 							commonLocal.stats_backend.c_drawElements + commonLocal.stats_backend.c_shadowElements,
-							( commonLocal.stats_backend.c_drawIndexes + commonLocal.stats_backend.c_shadowIndexes ) / 3,
-							commonLocal.stats_backend.c_shadowIndexes / 3 );
+							( commonLocal.stats_backend.c_drawIndexes + commonLocal.stats_backend.c_shadowIndexes ) / 3 );
 
 		if( com_showFPS.GetInteger() > 2 )
 		{
+			int atlasPercentage = idMath::Ftoi( 100.0f * ( commonLocal.stats_backend.c_shadowAtlasUsage / ( float )Square( r_shadowMapAtlasSize.GetInteger() ) ) );
+			ImGui::TextColored( colorLtGrey, "SHADOWS: atlas usage:%2i%% views:%i draws:%i tris:%i",
+								atlasPercentage,
+								commonLocal.stats_backend.c_shadowViews,
+								commonLocal.stats_backend.c_shadowElements,
+								commonLocal.stats_backend.c_shadowIndexes / 3 );
+
 			ImGui::TextColored( colorLtGrey, "DYNAMIC: callback:%-2i md5:%i dfrmVerts:%i dfrmTris:%i tangTris:%i guis:%i",
 								commonLocal.stats_frontend.c_entityDefCallbacks,
 								commonLocal.stats_frontend.c_generateMd5,

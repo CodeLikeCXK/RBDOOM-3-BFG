@@ -55,7 +55,6 @@ static drawSurf_t* R_FinishDeform( drawSurf_t* surf, srfTriangles_t* newTri, con
 	surf->numIndexes = newTri->numIndexes;
 	surf->ambientCache = newTri->ambientCache;
 	surf->indexCache = newTri->indexCache;
-	surf->shadowCache = 0;
 	surf->jointCache = 0;
 	surf->nextOnLight = NULL;
 
@@ -88,7 +87,7 @@ static drawSurf_t* R_AutospriteDeform( drawSurf_t* surf )
 	}
 
 	// RB: added check wether GPU skinning is available at all
-	const idJointMat* joints = ( srcTri->staticModelWithJoints != NULL && r_useGPUSkinning.GetBool() && glConfig.gpuSkinningAvailable ) ? srcTri->staticModelWithJoints->jointsInverted : NULL;
+	const idJointMat* joints = ( srcTri->staticModelWithJoints != NULL && r_useGPUSkinning.GetBool() ) ? srcTri->staticModelWithJoints->jointsInverted : NULL;
 	// RB end
 
 	idVec3 leftDir;
@@ -185,7 +184,7 @@ static drawSurf_t* R_TubeDeform( drawSurf_t* surf )
 	}
 
 	// RB: added check wether GPU skinning is available at all
-	const idJointMat* joints = ( srcTri->staticModelWithJoints != NULL && r_useGPUSkinning.GetBool() && glConfig.gpuSkinningAvailable ) ? srcTri->staticModelWithJoints->jointsInverted : NULL;
+	const idJointMat* joints = ( srcTri->staticModelWithJoints != NULL && r_useGPUSkinning.GetBool() ) ? srcTri->staticModelWithJoints->jointsInverted : NULL;
 	// RB end
 
 	// we need the view direction to project the minor axis of the tube
@@ -659,7 +658,7 @@ static void AddTriangleToIsland_r( const srfTriangles_t* tri, int triangleNum, b
 	island->numTris++;
 
 	// RB: added check wether GPU skinning is available at all
-	const idJointMat* joints = ( tri->staticModelWithJoints != NULL && r_useGPUSkinning.GetBool() && glConfig.gpuSkinningAvailable ) ? tri->staticModelWithJoints->jointsInverted : NULL;
+	const idJointMat* joints = ( tri->staticModelWithJoints != NULL && r_useGPUSkinning.GetBool() ) ? tri->staticModelWithJoints->jointsInverted : NULL;
 	// RB end
 
 	// recurse into all neighbors
@@ -749,7 +748,7 @@ static drawSurf_t* R_EyeballDeform( drawSurf_t* surf )
 	}
 
 	// RB: added check wether GPU skinning is available at all
-	const idJointMat* joints = ( srcTri->staticModelWithJoints != NULL && r_useGPUSkinning.GetBool() && glConfig.gpuSkinningAvailable ) ? srcTri->staticModelWithJoints->jointsInverted : NULL;
+	const idJointMat* joints = ( srcTri->staticModelWithJoints != NULL && r_useGPUSkinning.GetBool() ) ? srcTri->staticModelWithJoints->jointsInverted : NULL;
 	// RB end
 
 	// the srfTriangles_t are in frame memory and will be automatically disposed of
@@ -882,7 +881,7 @@ static drawSurf_t* R_ParticleDeform( drawSurf_t* surf, bool useArea, nvrhi::ICom
 	float* sourceTriAreas = NULL;
 
 	// RB: added check wether GPU skinning is available at all
-	const idJointMat* joints = ( ( srcTri->staticModelWithJoints != NULL ) && r_useGPUSkinning.GetBool() && glConfig.gpuSkinningAvailable ) ? srcTri->staticModelWithJoints->jointsInverted : NULL;
+	const idJointMat* joints = ( ( srcTri->staticModelWithJoints != NULL ) && r_useGPUSkinning.GetBool() ) ? srcTri->staticModelWithJoints->jointsInverted : NULL;
 	// RB end
 
 	if( useArea )
@@ -1104,12 +1103,10 @@ static drawSurf_t* R_ParticleDeform( drawSurf_t* surf, bool useArea, nvrhi::ICom
 		drawSurf->numIndexes = newTri->numIndexes;
 		drawSurf->ambientCache = newTri->ambientCache;
 		drawSurf->indexCache = newTri->indexCache;
-		drawSurf->shadowCache = 0;
 		drawSurf->jointCache = 0;
 		drawSurf->space = surf->space;
 		drawSurf->scissorRect = surf->scissorRect;
 		drawSurf->extraGLState = 0;
-		drawSurf->renderZFail = 0;
 
 		R_SetupDrawSurfShader( drawSurf, stage->material, renderEntity );
 
