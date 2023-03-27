@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.2)
 
-project(RBDoom3BFG)
+project(RBDOOM-3-BFG-IcedHellfireDev)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -8,7 +8,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 if(CMAKE_MAJOR_VERSION EQUAL 3 AND CMAKE_MINOR_VERSION GREATER_EQUAL 6)
 	# set MSVC startup project
-	set_property (DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT RBDoom3BFG)
+	set_property (DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT DoomIcedHellfire)
 endif()
 	
 option(STANDALONE
@@ -181,12 +181,12 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID MATCHES "Clang")
 		add_definitions(-DUSE_EXCEPTIONS)
 	#endif()
 	
-	add_compile_options(-Wno-pragmas -Wno-unused-variable -Wno-switch -Wno-unused-value -Winvalid-pch -Wno-multichar)
+	add_compile_options(-Wno-pragmas -Wno-unused-variable -Wno-switch -Wno-unused-value -Winvalid-pch -Wno-multichar -Wno-inconsistent-missing-override)
     if(CMAKE_C_COMPILER_ID MATCHES "Clang")
 		# add clang-specific settings for warnings (the second one make sure clang doesn't complain
 		# about unknown -W flags, like -Wno-unused-but-set-variable)
 		# SRS - Add -Wno-expansion-to-defined to list of warning settings
-		add_definitions(-Wno-local-type-template-args -Wno-unknown-warning-option -Wno-inline-new-delete -Wno-switch-enum -Wno-expansion-to-defined -Wno-nullability-completeness)
+		add_definitions(-Wno-local-type-template-args -Wno-unknown-warning-option -Wno-inline-new-delete -Wno-switch-enum -Wno-deprecated-register -Wno-expansion-to-defined -fms-extensions -Wno-nullability-completeness)
 	endif()
 	
 	if(NOT CMAKE_CROSSCOMPILING AND ONATIVE)
@@ -491,6 +491,7 @@ if(OPTICK)
 endif()
 
 add_subdirectory(idlib)
+add_subdirectory(typeinfo)
 
 file(GLOB NATVIS_SOURCES .natvis)
 
@@ -847,6 +848,15 @@ set(GAMED3XP_SOURCES
 file(GLOB GAMED3XP_AI_INCLUDES d3xp/ai/*.h)
 file(GLOB GAMED3XP_AI_SOURCES d3xp/ai/*.cpp)
 
+file(GLOB GAMED3XP_MONSTER_INCLUDES d3xp/monsters/*.h)
+file(GLOB GAMED3XP_MONSTER_SOURCES d3xp/monsters/*.cpp)
+
+file(GLOB GAMED3XP_BOTS_INCLUDES d3xp/bots/*.h)
+file(GLOB GAMED3XP_BOTS_SOURCES d3xp/bots/*.cpp)
+
+file(GLOB GAMED3XP_WEAPON_INCLUDES d3xp/weapons/*.h)
+file(GLOB GAMED3XP_WEAPON_SOURCES d3xp/weapons/*.cpp)
+
 file(GLOB GAMED3XP_ANIM_INCLUDES d3xp/anim/*.h)
 file(GLOB GAMED3XP_ANIM_SOURCES d3xp/anim/*.cpp)
 
@@ -854,6 +864,8 @@ file(GLOB GAMED3XP_GAMESYS_INCLUDES d3xp/gamesys/*.h)
 set(GAMED3XP_GAMESYS_SOURCES
 	#d3xp/gamesys/Callbacks.cpp
 	d3xp/gamesys/Class.cpp
+	d3xp/gamesys/State.cpp
+	d3xp/gamesys/GameTypeInfo.cpp
 	#d3xp/gamesys/DebugGraph.cpp
 	d3xp/gamesys/Event.cpp
 	d3xp/gamesys/SaveGame.cpp
@@ -1207,6 +1219,15 @@ source_group("game-d3xp" FILES ${GAMED3XP_SOURCES})
 source_group("game-d3xp\\ai" FILES ${GAMED3XP_AI_INCLUDES})
 source_group("game-d3xp\\ai" FILES ${GAMED3XP_AI_SOURCES})
 
+source_group("game-d3xp\\monsters" FILES ${GAMED3XP_MONSTER_INCLUDES})
+source_group("game-d3xp\\monsters" FILES ${GAMED3XP_MONSTER_SOURCES})
+
+source_group("game-d3xp\\bots" FILES ${GAMED3XP_BOTS_INCLUDES})
+source_group("game-d3xp\\bots" FILES ${GAMED3XP_BOTS_SOURCES})
+
+source_group("game-d3xp\\weapons" FILES ${GAMED3XP_WEAPON_INCLUDES})
+source_group("game-d3xp\\weapons" FILES ${GAMED3XP_WEAPON_SOURCES})
+
 source_group("game-d3xp\\anim" FILES ${GAMED3XP_ANIM_INCLUDES})
 source_group("game-d3xp\\anim" FILES ${GAMED3XP_ANIM_SOURCES})
 
@@ -1350,7 +1371,10 @@ set(RBDOOM3_INCLUDES
 			${GAMED3XP_AI_INCLUDES} 
 			${GAMED3XP_ANIM_INCLUDES} 
 			${GAMED3XP_GAMESYS_INCLUDES} 
+			${GAMED3XP_BOTS_INCLUDES}
 			${GAMED3XP_MENUS_INCLUDES}
+			${GAMED3XP_MONSTER_INCLUDES}
+			${GAMED3XP_WEAPON_INCLUDES}
 			${GAMED3XP_PHYSICS_INCLUDES}
 			${GAMED3XP_SCRIPT_INCLUDES}
 			)
@@ -1396,6 +1420,9 @@ set(RBDOOM3_SOURCES
 			
 			${GAMED3XP_SOURCES}
 			${GAMED3XP_AI_SOURCES}
+			${GAMED3XP_MONSTER_SOURCES}
+			${GAMED3XP_BOTS_SOURCES}
+			${GAMED3XP_WEAPON_SOURCES}
 			${GAMED3XP_ANIM_SOURCES}
 			${GAMED3XP_GAMESYS_SOURCES}
 			${GAMED3XP_MENUS_SOURCES}
@@ -1548,6 +1575,7 @@ if(MSVC)
 		list(REMOVE_ITEM RBDOOM3_PRECOMPILED_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/renderer/DXT/DXTEncoder.cpp)
 		list(REMOVE_ITEM RBDOOM3_PRECOMPILED_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/renderer/DXT/DXTEncoder_SSE2.cpp)
 		
+		list(REMOVE_ITEM RBDOOM3_PRECOMPILED_SOURCES d3xp/gamesys/Class.cpp)
 		if(USE_VULKAN)
 			list(REMOVE_ITEM RBDOOM3_PRECOMPILED_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/sys/DeviceManager_VK.cpp)
 		endif()
@@ -1572,18 +1600,29 @@ if(MSVC)
 	
 	list(APPEND RBDOOM3_SOURCES ${WIN32_RESOURCES})
 	
-	add_executable(RBDoom3BFG WIN32 ${RBDOOM3_INCLUDES} ${RBDOOM3_SOURCES})
+	add_executable(DoomIcedHellfire WIN32 ${RBDOOM3_INCLUDES} ${RBDOOM3_SOURCES})
 
-	add_dependencies(RBDoom3BFG idlib)
+	add_dependencies(DoomIcedHellfire idlib typeinfogen)
     
     if(USE_DX12)
-		add_dependencies(RBDoom3BFG nvrhi_d3d12)
+		add_dependencies(DoomIcedHellfire nvrhi_d3d12)
 	endif()
 	
 	if(USE_VULKAN)
-		add_dependencies(RBDoom3BFG nvrhi_vk)
+		add_dependencies(DoomIcedHellfire nvrhi_vk)
 	endif()
-	target_link_libraries(RBDoom3BFG
+	
+	# call typeinfogen to generate neo/d3xp/gamesys/GameTypeInfo.h
+	add_custom_command(
+			TARGET DoomIcedHellfire
+			PRE_BUILD
+			DEPENDS typeinfogen
+			COMMAND typeinfogen
+			WORKING_DIRECTORY ..
+			COMMENT "Generating neo/d3xp/gamesys/GameTypeInfo.h"
+			)
+	
+	target_link_libraries(DoomIcedHellfire
 		idlib
 		${DirectX_LIBRARIES}
 		dbghelp
@@ -1604,15 +1643,15 @@ if(MSVC)
 		
 	# set MSVC default debug directory on executable	
 	if(CMAKE_MAJOR_VERSION EQUAL 3 AND CMAKE_MINOR_VERSION GREATER_EQUAL 8)
-		set_target_properties(RBDoom3BFG PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/..")
+		set_target_properties(DoomIcedHellfire PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/..")
 	endif()
 	
 	#CMAKE_BINARY_DIR
 	if(CMAKE_CL_64)
-		install(TARGETS RBDoom3BFG
+		install(TARGETS DoomIcedHellfire
 			RUNTIME DESTINATION .)
 	else()
-		install(TARGETS RBDoom3BFG
+		install(TARGETS DoomIcedHellfire
 			RUNTIME DESTINATION .)
 	endif()	
 
@@ -1744,17 +1783,17 @@ else()
 		set(MACOSX_BUNDLE_INFO_STRING "")					# to be added by author if desired
 		set(MACOSX_BUNDLE_COPYRIGHT "")						# to be added by author if desired
 
-		add_executable(RBDoom3BFG MACOSX_BUNDLE ${MACOS_RESOURCES} ${RBDOOM3_INCLUDES} ${RBDOOM3_SOURCES})
+		add_executable(DoomIcedHellfire MACOSX_BUNDLE ${MACOS_RESOURCES} ${RBDOOM3_INCLUDES} ${RBDOOM3_SOURCES})
 	else()
-		add_executable(RBDoom3BFG WIN32 ${RBDOOM3_INCLUDES} ${RBDOOM3_SOURCES})
+		add_executable(DoomIcedHellfire WIN32 ${RBDOOM3_INCLUDES} ${RBDOOM3_SOURCES})
 	endif()
 
 	if(USE_VULKAN)
-        add_dependencies(RBDoom3BFG nvrhi_vk)
+        add_dependencies(DoomIcedHellfire nvrhi_vk)
     endif()
 	if (USE_PRECOMPILED_HEADERS)
 		# make sure precompiled header is created before executable is compiled
-		add_dependencies(RBDoom3BFG precomp_header_rbdoom3bfg)
+		add_dependencies(DoomIcedHellfire precomp_header_rbdoom3bfg idlib typeinfogen)
 		
 		if(WIN32)
 			set(remove_command "del")
@@ -1769,11 +1808,11 @@ else()
 					WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 					COMMENT "remove idlib/precompiled.h.gch"
 					)
-			add_dependencies(rm_precomp_header RBDoom3BFG)
+			add_dependencies(rm_precomp_header DoomIcedHellfire)
 
 		# delete precompiled header file after executable is compiled: IDE build case (e.g. Xcode)
 		else()
-			add_custom_command(TARGET RBDoom3BFG POST_BUILD
+			add_custom_command(TARGET DoomIcedHellfire POST_BUILD
 					COMMAND ${remove_command} "idlib/precompiled.h.gch"
 					WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 					COMMENT "remove idlib/precompiled.h.gch"
@@ -1781,12 +1820,22 @@ else()
 		endif()
 	endif()
 
+	# call typeinfogen to generate neo/d3xp/gamesys/GameTypeInfo.h
+	add_custom_command(
+			TARGET DoomIcedHellfire
+			PRE_BUILD
+			DEPENDS typeinfogen
+			COMMAND typeinfogen
+			WORKING_DIRECTORY ..
+			COMMENT "Generating neo/d3xp/gamesys/GameTypeInfo.h"
+			)
+
 	if(NOT WIN32)
         if(NOT APPLE)
 			set(RT_LIBRARY rt)
 		endif()
 
-		target_link_libraries(RBDoom3BFG
+		target_link_libraries(DoomIcedHellfire
 			idlib
 			${Vulkan_LIBRARY}
 			#${OPENGL_LIBRARIES}
@@ -1805,28 +1854,48 @@ else()
 endif()
 
 if(USE_DX12)
-	target_compile_definitions(RBDoom3BFG PUBLIC USE_DX12=1)
-	target_link_libraries(RBDoom3BFG nvrhi_d3d12)
+	target_compile_definitions(DoomIcedHellfire PUBLIC USE_DX12=1)
+	target_link_libraries(DoomIcedHellfire nvrhi_d3d12)
 endif()
 
 if(USE_DXIL_ON_DX12)
-	target_compile_definitions(RBDoom3BFG PRIVATE USE_DXIL_ON_DX12=1)
+	target_compile_definitions(DoomIcedHellfire PRIVATE USE_DXIL_ON_DX12=1)
 endif()
 
 if(USE_VULKAN)
-	target_compile_definitions(RBDoom3BFG PUBLIC USE_VK=1)
-	target_link_libraries(RBDoom3BFG nvrhi_vk)
+	target_compile_definitions(DoomIcedHellfire PUBLIC USE_VK=1)
+	target_link_libraries(DoomIcedHellfire nvrhi_vk)
 endif()
 
 if(OPTICK)
-	target_compile_definitions(RBDoom3BFG PUBLIC USE_OPTICK=1)
+	target_compile_definitions(DoomIcedHellfire PUBLIC USE_OPTICK=1)
 else()
-	target_compile_definitions(RBDoom3BFG PUBLIC USE_OPTICK=0)
+	target_compile_definitions(DoomIcedHellfire PUBLIC USE_OPTICK=0)
+endif()
+
+#setup visual studio with command arguments given 
+if(CMAKE_GENERATOR MATCHES "^Visual Studio .*" AND MSVC)
+	message(STATUS "Checking ${CMAKE_CONFIGURATION_TYPES} for debug command options")
+	set (finalArgs "")
+	foreach(entry IN LISTS CMAKE_CONFIGURATION_TYPES)
+		if (NOT ${DBG_CMD_${entry}} STREQUAL "")
+			set (targetCmdFile "${CMAKE_CURRENT_SOURCE_DIR}/${DBG_CMD_${entry}}")
+			if(NOT EXISTS ${targetCmdFile})			
+				message (FATAL_ERROR "DBG_CMD_${entry} cant load \"${targetCmdFile}\" because it does not exist")
+			else()
+				file(READ ${targetCmdFile} cmdARGS_${entry})
+				set (finalArgs "${finalArgs}$<$<CONFIG:${entry}>:${cmdARGS_${entry}}>")
+			endif()
+		else()
+			#message (STATUS "No [DBG_CMD_]${entry} entry set")
+		endif()
+	endforeach()
+	set_property(TARGET DoomIcedHellfire PROPERTY VS_DEBUGGER_COMMAND_ARGUMENTS ${finalArgs})
 endif()
 
 # needs to come after nvrhi_d3d11 etc. for link order
-target_link_libraries(RBDoom3BFG nvrhi)
+target_link_libraries(DoomIcedHellfire nvrhi)
 
 add_subdirectory(shaders)
-add_dependencies(RBDoom3BFG Shaders)
+add_dependencies(DoomIcedHellfire Shaders)
 
