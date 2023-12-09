@@ -5926,12 +5926,32 @@ void idRenderBackend::CopyRender( const void* data )
 
 	if( cmd->image )
 	{
+		renderLog.OpenBlock( cmd->image->GetName() );
+
+		BlitParameters blitParms;
+		blitParms.sourceTexture = ( nvrhi::ITexture* )globalImages->ldrImage->GetTextureID();
+		nvrhi::IFramebuffer* framebuffer = globalFramebuffers.postProcFBO->GetApiObject();
+		if( cmd->image == globalImages->accumImage )
+		{
+			framebuffer = globalFramebuffers.accumFBO->GetApiObject();
+		}
+		blitParms.targetFramebuffer = framebuffer;
+		blitParms.targetViewport = nvrhi::Viewport( cmd->imageWidth, cmd->imageHeight );
+		commonPasses.BlitTexture( commandList, blitParms, &bindingCache );
+
 		cmd->image->CopyFramebuffer( cmd->x, cmd->y, cmd->imageWidth, cmd->imageHeight );
+
+		renderLog.CloseBlock();
 	}
 
 	if( cmd->clearColorAfterCopy )
 	{
-		GL_Clear( true, false, false, STENCIL_SHADOW_TEST_VALUE, 0, 0, 0, 0 );
+		nvrhi::IFramebuffer* framebuffer = globalFramebuffers.postProcFBO->GetApiObject();
+		if( cmd->image == globalImages->accumImage )
+		{
+			framebuffer = globalFramebuffers.accumFBO->GetApiObject();
+		}
+		nvrhi::utils::ClearColorAttachment( commandList, framebuffer, 0, nvrhi::Color( 0.f ) );
 	}
 
 	renderLog.CloseBlock();
@@ -6074,7 +6094,6 @@ void idRenderBackend::PostProcess( const void* data )
 
 	if( r_useFilmicPostProcessing.GetBool() )
 	{
-#if defined( USE_NVRHI )
 		BlitParameters blitParms;
 		blitParms.sourceTexture = ( nvrhi::ITexture* )globalImages->ldrImage->GetTextureID();
 		blitParms.targetFramebuffer = globalFramebuffers.smaaBlendFBO->GetApiObject();
@@ -6084,13 +6103,6 @@ void idRenderBackend::PostProcess( const void* data )
 
 		GL_SelectTexture( 0 );
 		globalImages->smaaBlendImage->Bind();
-#else
-		globalImages->currentRenderImage->CopyFramebuffer( viewport.x1, viewport.y1, viewport.GetWidth(), viewport.GetHeight() );
-
-		GL_SelectTexture( 0 );
-		globalImages->currentRenderImage->Bind();
-#endif
-
 
 		globalFramebuffers.ldrFBO->Bind();
 
@@ -6123,21 +6135,21 @@ void idRenderBackend::PostProcess( const void* data )
 	GL_SelectTexture( 0 );
 	renderProgManager.Unbind();
 
-#if defined( USE_NVRHI )
+	// copy LDR result to DX12 / Vulkan swapchain image
 	BlitParameters blitParms;
 	blitParms.sourceTexture = ( nvrhi::ITexture* )globalImages->ldrImage->GetTextureID();
 	blitParms.targetFramebuffer = deviceManager->GetCurrentFramebuffer();
 	blitParms.targetViewport = nvrhi::Viewport( renderSystem->GetWidth(), renderSystem->GetHeight() );
 	commonPasses.BlitTexture( commandList, blitParms, &bindingCache );
 
-	GL_SelectTexture( 0 );
-	globalImages->currentRenderImage->Bind();
-#else
-	globalImages->currentRenderImage->CopyFramebuffer( viewport.x1, viewport.y1, viewport.GetWidth(), viewport.GetHeight() );
+	// copy LDR result to postProcFBO which is HDR but also used by postFX
+	blitParms.sourceTexture = ( nvrhi::ITexture* )globalImages->ldrImage->GetTextureID();
+	blitParms.targetFramebuffer = globalFramebuffers.postProcFBO->GetApiObject();
+	blitParms.targetViewport = nvrhi::Viewport( viewport.x1, viewport.x2, viewport.y1, viewport.y2, viewport.zmin, viewport.zmax );
+	commonPasses.BlitTexture( commandList, blitParms, &bindingCache );
 
 	GL_SelectTexture( 0 );
 	globalImages->currentRenderImage->Bind();
-#endif
 
 	renderLog.CloseBlock();
 	renderLog.CloseMainBlock();
