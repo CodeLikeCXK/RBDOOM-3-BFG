@@ -108,10 +108,36 @@ void main( PS_IN fragment, out PS_OUT result )
 	float lambert = ldotN;
 #endif
 
+    //add experiemental cel shading / toon shading ramp
+    const float rampThreshold = 0.5; 
+    // How wide the gradient transition is. 
+    // 0.01 = Hard Edge (Classic Toon), 0.25 = Soft Gradient Ramp
+    const float rampSoftness = 0.1; 
+    const float rampFloor = 0.1; 
+    // 2. Procedural Ramp Calculation
+    // We remap the linear lambert value through a smooth S-curve
+    float toonLambert = smoothstep(rampThreshold - rampSoftness, rampThreshold + rampSoftness, lambert);
+    // 3. Apply the ramp
+    lambert = toonLambert * (1.0 - rampFloor) + rampFloor;
+	//end
+
+	
+
 	const float specularPower = 10.0f;
 	float hDotN = dot3( normalize( fragment.texcoord6.xyz ), localNormal );
 	// RB: added abs
 	float3 specularContribution = _float3( pow( abs( hDotN ), specularPower ) );
+
+	//add experiemental cel shading / toon shading ramp to specular
+    // Determine how bright the specular highlight is
+    float specBrightness = max(specularContribution.r, max(specularContribution.g, specularContribution.b));
+    // Create a sharp transition for the highlight
+    float specCutoff = 0.5; // Threshold
+    float specSmooth = 0.05; // Softness
+    float specRamp = smoothstep(specCutoff, specCutoff + specSmooth, specBrightness);
+    // Re-apply this ramp to the specular color, boosting it slightly to make it "pop"
+    specularContribution = normalize(specularContribution + 0.001) * specRamp * length(specularContribution);
+	//end
 
 	float3 diffuseColor = diffuseMap * ( rpDiffuseModifier.xyz );
 	float3 specularColor = specMap.xyz * specularContribution * ( rpSpecularModifier.xyz );

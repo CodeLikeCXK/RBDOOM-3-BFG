@@ -110,6 +110,19 @@ void main( PS_IN fragment, out PS_OUT result )
 #else
 	float lambert = ldotN;
 #endif
+    
+
+    //add experiemental cel shading / toon shading ramp
+    const float rampThreshold = 0.5; 
+    // How wide the gradient transition is. 
+    // 0.01 = Hard Edge (Classic Toon), 0.25 = Soft Gradient Ramp
+    const float rampSoftness = 0.15; 
+    const float rampFloor = 0.1; 
+    // 2. Procedural Ramp Calculation
+    // We remap the linear lambert value through a smooth S-curve
+    float toonLambert = smoothstep(rampThreshold - rampSoftness, rampThreshold + rampSoftness, lambert);
+    // 3. Apply the ramp
+    lambert = toonLambert * (1.0 - rampFloor) + rampFloor;
 
 
 	float3 halfAngleVector = normalize( lightVector + viewVector );
@@ -177,6 +190,19 @@ void main( PS_IN fragment, out PS_OUT result )
 #else
 	float3 specularLight = ( rrrr / ( 4.0 * PI * D * D * VFapprox ) ) * ldotN * reflectColor;
 #endif
+
+    //add experiemental cel shading / toon shading ramp to specular
+    // Determine how bright the specular highlight is
+    float specBrightness = max(specularLight.r, max(specularLight.g, specularLight.b));
+    
+    // Create a sharp transition for the highlight
+    float specCutoff = 0.5; // Threshold
+    float specSmooth = 0.05; // Softness
+    float specRamp = smoothstep(specCutoff, specCutoff + specSmooth, specBrightness);
+    
+    // Re-apply this ramp to the specular color, boosting it slightly to make it "pop"
+    specularLight = normalize(specularLight + 0.001) * specRamp * length(specularLight);
+    // =========================================================================
 
 
 #if 0
