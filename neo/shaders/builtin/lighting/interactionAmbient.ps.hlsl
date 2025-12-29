@@ -118,7 +118,7 @@ void main( PS_IN fragment, out PS_OUT result )
     // We remap the linear lambert value through a smooth S-curve
     float toonLambert = smoothstep(rampThreshold - rampSoftness, rampThreshold + rampSoftness, lambert);
     // 3. Apply the ramp
-    lambert = toonLambert * (1.0 - rampFloor) + rampFloor;
+    lambert = toonLambert * (1.0 - rampFloor);
 	//end
 
 	

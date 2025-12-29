@@ -96,33 +96,40 @@ void main( PS_IN fragment, out PS_OUT result )
 	// RB end
 	localNormal.z = sqrt( abs( dot( localNormal.xy, localNormal.xy ) - 0.25 ) );
 	localNormal = normalize( localNormal );
-
 	// traditional very dark Lambert light model used in Doom 3
-	float ldotN = saturate( dot3( localNormal, lightVector ) );
+	//float ldotN = saturate( dot3( localNormal, lightVector ) );
+	//replace with a toon ready ldotN
+	float ldotN = dot3( localNormal, lightVector );
 
-#if defined(USE_HALF_LAMBERT)
+
+
+	//original code start
+
+//#if defined(USE_HALF_LAMBERT)
 	// RB: http://developer.valvesoftware.com/wiki/Half_Lambert
-	float halfLdotN = dot3( localNormal, lightVector ) * 0.5 + 0.5;
-	halfLdotN *= halfLdotN;
+//	float halfLdotN = dot3( localNormal, lightVector ) * 0.5 + 0.5;
+//	halfLdotN *= halfLdotN;
 
 	// tweak to not loose so many details
-	float lambert = lerp( ldotN, halfLdotN, 0.5 );
-#else
-	float lambert = ldotN;
-#endif
+//	float lambert = lerp( ldotN, halfLdotN, 0.5 );
+//#else
+//	float lambert = ldotN;
+//#endif
     
+//original code end
 
-    //add experiemental cel shading / toon shading ramp
-    const float rampThreshold = 0.5; 
-    // How wide the gradient transition is. 
-    // 0.01 = Hard Edge (Classic Toon), 0.25 = Soft Gradient Ramp
-    const float rampSoftness = 0.15; 
-    const float rampFloor = 0.1; 
-    // 2. Procedural Ramp Calculation
-    // We remap the linear lambert value through a smooth S-curve
-    float toonLambert = smoothstep(rampThreshold - rampSoftness, rampThreshold + rampSoftness, lambert);
-    // 3. Apply the ramp
-    lambert = toonLambert * (1.0 - rampFloor) + rampFloor;
+	//add experiemental cel shading / toon shading ramp
+	float toonNormalFlattening = 0.65; // 0.0 = full bump details, 1.0 = perfectly flat anime look
+	float3 smoothToonNormal = normalize(lerp(localNormal, float3(0, 0, 1), toonNormalFlattening));
+	float halfLambert = ldotN * 0.5 + 0.5; // Remaps to 0.0 - 1.0 range
+	const float rampThreshold = 0.45; 
+	const float rampSoftness = 0.2; // Increase this for softer BotW gradients
+	float toonRamp = smoothstep(rampThreshold - rampSoftness, rampThreshold + rampSoftness, halfLambert);
+	const float shadowBrightness = 0.01; // Brightness of the dark side
+	float lambert = lerp(shadowBrightness, 1.0, toonRamp);
+	// *IMPORTANT*: Apply strict clamping to prevent Doom 3's over-bright lights from breaking the toon look
+	lambert = saturate(lambert);
+	// (Original code resumes, calculate hdotN, etc...)
 
 
 	float3 halfAngleVector = normalize( lightVector + viewVector );
@@ -193,15 +200,13 @@ void main( PS_IN fragment, out PS_OUT result )
 
     //add experiemental cel shading / toon shading ramp to specular
     // Determine how bright the specular highlight is
-    float specBrightness = max(specularLight.r, max(specularLight.g, specularLight.b));
-    
-    // Create a sharp transition for the highlight
-    float specCutoff = 0.5; // Threshold
-    float specSmooth = 0.05; // Softness
-    float specRamp = smoothstep(specCutoff, specCutoff + specSmooth, specBrightness);
-    
-    // Re-apply this ramp to the specular color, boosting it slightly to make it "pop"
-    specularLight = normalize(specularLight + 0.001) * specRamp * length(specularLight);
+	float specIntensity = dot(specularLight, float3(0.299, 0.587, 0.114));
+	float specThreshold = 0.1; // Lower threshold to make it appear more often
+	float specSoftness = 0.15; 
+	float specRamp = smoothstep(specThreshold, specThreshold + specSoftness, specIntensity);
+	float3 cleanSpecColor = specularLight / (specIntensity + 0.0001); 
+	specularLight = cleanSpecColor * specRamp * rpSpecularModifier.rgb * 2.0; // Boosted intensity
+
     // =========================================================================
 
 
@@ -213,7 +218,22 @@ void main( PS_IN fragment, out PS_OUT result )
 	//float3 diffuseColor = mix( diffuseMap, F0, metal ) * rpDiffuseModifier.xyz;
 	float3 diffuseLight = diffuseColor * lambert * ( rpDiffuseModifier.xyz );
 
-	float3 color = ( diffuseLight + specularLight ) * lightColor * fragment.color.rgb;
+	//add rim light
+	float NdotV_Rim = saturate( dot3( localNormal, viewVector ) );
+	float fresnelTerm = 1.0 - NdotV_Rim;
+	const float rimWidth = 0.15;
+	const float rimSharpness = 0.1;
+	float rimThresholdInv = 1.0 - rimWidth;
+	float rimIntensity = smoothstep(rimThresholdInv, rimThresholdInv + rimSharpness, fresnelTerm);
+	const float3 rimColorCfg = float3(1.0, 0.95, 0.8); // A slight warm white looks nice
+	const float rimStrength = 0.5; // Overall intensity of the rim
+	float3 rimLightFinal = rimColorCfg * rimIntensity * rimStrength;
+	
+	
+
+	//float3 color = ( diffuseLight + specularLight ) * lightColor * fragment.color.rgb;
+
+	float3 color = ( diffuseLight + specularLight + rimLightFinal ) * lightColor * fragment.color.rgb;
 
 	result.color.rgb = color;
 	result.color.a = 1.0;
