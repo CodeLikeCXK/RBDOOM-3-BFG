@@ -363,6 +363,26 @@ bool DeviceManager_DX12::CreateDeviceAndSwapChain()
 			 IID_PPV_ARGS( &m_Device12 ) );
 	HR_RETURN( hr );
 
+	// SRS - calculate and print out the DXGI device name and driver version string
+	idStr version_string;
+
+	// SRS - check the adaptor interface which returns the User Mode Driver version
+	LARGE_INTEGER UMDVersion;
+	if(	SUCCEEDED( targetAdapter->CheckInterfaceSupport( __uuidof( IDXGIDevice ), &UMDVersion ) ) )
+	{
+		version_string.Format( "UMD driver %u.%u.%u.%u",
+								UMDVersion.QuadPart >> 48,
+							  ( UMDVersion.QuadPart >> 32 ) & 0xFFFF,
+							  ( UMDVersion.QuadPart >> 16 ) & 0xFFFF,
+								UMDVersion.QuadPart & 0xFFFF );
+	}
+	else
+	{
+		version_string.Format( "UMD driver ?.?.?.?" );
+	}
+
+	common->Printf( "Created DX12 device: %s (%s)\n", m_RendererString.c_str(), version_string.c_str() );
+
 	if( m_DeviceParams.enableDebugRuntime )
 	{
 		RefCountPtr<ID3D12InfoQueue> pInfoQueue;
@@ -382,7 +402,7 @@ bool DeviceManager_DX12::CreateDeviceAndSwapChain()
 				D3D12_MESSAGE_ID_COMMAND_LIST_STATIC_DESCRIPTOR_RESOURCE_DIMENSION_MISMATCH, // descriptor validation doesn't understand acceleration structures
 				D3D12_MESSAGE_ID_CREATEGRAPHICSPIPELINESTATE_RENDERTARGETVIEW_NOT_SET, // disable warning when there is no color attachment (e.g. shadow atlas)
 				D3D12_MESSAGE_ID_RESOURCE_BARRIER_BEFORE_AFTER_MISMATCH, // barrier validation error caused by cinematics - not sure how to fix, suppress for now
-				D3D12_MESSAGE_ID(1321) // D3D12_MESSAGE_ID_COMMAND_LIST_STATIC_DESCRIPTOR_SAMPLER_MODE_MISMATCH - suppress another descriptor validation issue
+				D3D12_MESSAGE_ID( 1321 ) // D3D12_MESSAGE_ID_COMMAND_LIST_STATIC_DESCRIPTOR_SAMPLER_MODE_MISMATCH - suppress another descriptor validation issue
 			};
 
 			D3D12_INFO_QUEUE_FILTER filter = {};

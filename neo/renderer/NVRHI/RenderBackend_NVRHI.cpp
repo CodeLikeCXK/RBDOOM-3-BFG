@@ -446,9 +446,12 @@ void idRenderBackend::DrawElementsWithCounters( const drawSurf_t* surf, bool sha
 	{
 		GetCurrentBindingLayout( bindingLayoutType );
 
+		bool uniformsLayoutChanged = prevBindingLayoutType >= 0 ? ( *layouts )[0] != ( *renderProgManager.GetBindingLayout( prevBindingLayoutType ) )[0] : true;
+
 		for( int i = 0; i < layouts->Num(); i++ )
 		{
-			if( !currentBindingSets[i] || *currentBindingSets[i]->getDesc() != pendingBindingSetDescs[bindingLayoutType][i] || bindingLayoutType != prevBindingLayoutType )
+			// SRS - Update currentBindingSets[0] if uniforms binding layout has changed, can happen with push constants even if binding set descriptions match
+			if( !currentBindingSets[i] || *currentBindingSets[i]->getDesc() != pendingBindingSetDescs[bindingLayoutType][i] || ( uniformsLayoutChanged && i == 0 ) )
 			{
 				currentBindingSets[i] = bindingCache.GetOrCreateBindingSet( pendingBindingSetDescs[bindingLayoutType][i], ( *layouts )[i] );
 				changeState = true;
@@ -486,7 +489,7 @@ void idRenderBackend::DrawElementsWithCounters( const drawSurf_t* surf, bool sha
 		{
 			// Reset the graphics state if the uniforms or binding layout type
 			// have changed for Vulkan - either push constants are enabled or
-			// the constant buffer is written to and the render pass is
+			// the binding layout type has changed and the render pass is
 			// ended for vulkan. setGraphicsState will reinstate the
 			// render pass or set up for push constants.
 			changeState = true;
@@ -537,6 +540,11 @@ void idRenderBackend::DrawElementsWithCounters( const drawSurf_t* surf, bool sha
 		commandList->setGraphicsState( state );
 
 		renderProgManager.CommitPushConstants( commandList, bindingLayoutType );
+
+		// keep track of last context to avoid setting up the binding layout and binding set again.
+		// SRS - Save context only if state actually changed - to keep currentBindingSets in sync
+		prevContext = context;
+		prevBindingLayoutType = bindingLayoutType;
 	}
 
 	//
@@ -547,10 +555,6 @@ void idRenderBackend::DrawElementsWithCounters( const drawSurf_t* surf, bool sha
 	args.startIndexLocation = currentIndexOffset / sizeof( triIndex_t );
 	args.vertexCount = surf->numIndexes;
 	commandList->drawIndexed( args );
-
-	// keep track of last context to avoid setting up the binding layout and binding set again.
-	prevContext = context;
-	prevBindingLayoutType = bindingLayoutType;
 
 	if( shadowCounter )
 	{

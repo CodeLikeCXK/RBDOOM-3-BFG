@@ -184,8 +184,8 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID MATCHES "Clang")
 	if(CMAKE_C_COMPILER_ID MATCHES "Clang")
 		# add clang-specific settings for warnings (the second one make sure clang doesn't complain
 		# about unknown -W flags, like -Wno-unused-but-set-variable)
-		# SRS - Add -Wno-expansion-to-defined, Wno-nullability-completeness and -Wno-shorten-64-to-32 to list of warning settings
-		add_compile_options(-Wno-local-type-template-args -Wno-unknown-warning-option -Wno-inline-new-delete -Wno-switch-enum -Wno-expansion-to-defined -Wno-nullability-completeness -Wno-shorten-64-to-32)
+		# SRS - Add -Wno-expansion-to-defined, Wno-nullability-completeness, -Wno-shorten-64-to-32 and -Wno-nontrivial-memcall to list of warning settings
+		add_compile_options(-Wno-local-type-template-args -Wno-unknown-warning-option -Wno-inline-new-delete -Wno-switch-enum -Wno-expansion-to-defined -Wno-nullability-completeness -Wno-shorten-64-to-32 -Wno-nontrivial-memcall)
 	endif()
 	
 	if(NOT CMAKE_CROSSCOMPILING AND ONATIVE)
@@ -202,12 +202,26 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID MATCHES "Clang")
     if(APPLE)
 		# SRS - CMAKE_OSX_SYSROOT and CMAKE_OSX_DEPLOYMENT_TARGET are now defined by macOS build scripts prior to execution of CMake's project() statement.
 		#       This approach supports CMake 4.0+ and earlier versions. Note -isysroot and -mmacosx-version-min still required for PCH command line builds.
-		if(USE_PRECOMPILED_HEADERS AND NOT CMAKE_GENERATOR MATCHES "Xcode")
-			if(CMAKE_OSX_SYSROOT)
-				add_compile_options(-isysroot ${CMAKE_OSX_SYSROOT})
-			endif()
-			if(CMAKE_OSX_DEPLOYMENT_TARGET)
-				add_compile_options(-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET})
+		if(USE_PRECOMPILED_HEADERS)
+			if(CMAKE_GENERATOR MATCHES "Xcode")
+				# avoid Xcode PCH redefinition warnings for clang's libc++ hardening mode available in Xcode 16.3+ / AppleClang 17+
+				# setting these values will ensure that libc++ hardening flags for PCH match Xcode's default libc++ hardening flags
+				# note: users can override these settings via CLANG_CXX_FLAGS_* in the cmake-xcode-*.sh shell scripts, for example:
+				#       -DCLANG_CXX_FLAGS_RELEASE="-U_LIBCPP_HARDENING_MODE -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST"
+				if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "17.0.0")
+					set(CMAKE_XCODE_ATTRIBUTE_CLANG_CXX_STANDARD_LIBRARY_HARDENING "$<IF:$<CONFIG:Debug>,debug,$(__LIBRARY_HARDENING_DEFAULT_VALUE)>")
+					set(CLANG_CXX_FLAGS_DEBUG "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG ${CLANG_CXX_FLAGS_DEBUG}")
+					set(CLANG_CXX_FLAGS_RELEASE "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEFAULT ${CLANG_CXX_FLAGS_RELEASE}")
+					set(CLANG_CXX_FLAGS_RELWITHDEBINFO "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEFAULT ${CLANG_CXX_FLAGS_RELWITHDEBINFO}")
+					set(CLANG_CXX_FLAGS_MINSIZEREL "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEFAULT ${CLANG_CXX_FLAGS_MINSIZEREL}")
+				endif()
+			else()
+				if(CMAKE_OSX_SYSROOT)
+					add_compile_options(-isysroot ${CMAKE_OSX_SYSROOT})
+				endif()
+				if(CMAKE_OSX_DEPLOYMENT_TARGET)
+					add_compile_options(-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET})
+				endif()
 			endif()
 		endif()
 		# SRS - Also add -fasm-blocks otherwise Xcode complains and -Qunused-arguments to silence MMX/SSE unused arg warnings when compiling for Apple arm64
@@ -221,12 +235,12 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID MATCHES "Clang")
 	set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -g -O3 -ffp-contract=off -fomit-frame-pointer -fno-math-errno -fno-trapping-math")
 	set(CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL} -Os -ffp-contract=off -fomit-frame-pointer -fno-math-errno -fno-trapping-math")
 	
-	set(CMAKE_CXX_FLAGS_DEBUG ${CMAKE_C_FLAGS_DEBUG})
+	set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CLANG_CXX_FLAGS_DEBUG}")
 	#set(CMAKE_CXX_FLAGS_DEBUGALL ${CMAKE_C_FLAGS_DEBUGALL})
 	#set(CMAKE_CXX_FLAGS_PROFILE ${CMAKE_C_FLAGS_PROFILE})
-	set(CMAKE_CXX_FLAGS_RELEASE ${CMAKE_C_FLAGS_RELEASE})
-	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO ${CMAKE_C_FLAGS_RELWITHDEBINFO})
-	set(CMAKE_CXX_FLAGS_MINSIZEREL ${CMAKE_C_FLAGS_MINSIZEREL})
+	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${CLANG_CXX_FLAGS_RELEASE}")
+	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} ${CLANG_CXX_FLAGS_RELWITHDEBINFO}")
+	set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL} ${CLANG_CXX_FLAGS_MINSIZEREL}")
 
 elseif(MSVC)
 	
@@ -541,6 +555,7 @@ endif()
 
 file(GLOB MINIZIP_INCLUDES libs/zlib/minizip/*.h)
 file(GLOB MINIZIP_SOURCES libs/zlib/minizip/*.c libs/zlib/minizip/*.cpp)
+file(GLOB MINIZIP_C_SOURCES libs/zlib/minizip/*.c)
 
 set(SOUND_INCLUDES
 	sound/snd_local.h
@@ -1359,9 +1374,9 @@ else()
 	# SRS - disable certain gcc/clang warnings for select third-party source libraries, consider updating versions in the future?
 	set_source_files_properties(
 			${ZLIB_SOURCES}
-			${MINIZIP_SOURCES}
+			${MINIZIP_C_SOURCES}
 			PROPERTIES
-			COMPILE_FLAGS "-Wno-stringop-overread -Wno-deprecated-non-prototype"
+			COMPILE_FLAGS "-Wno-stringop-overread -Wno-deprecated-non-prototype -Wno-old-style-definition"
 			)
 		
 	# SRS - if using gcc compiler enable gnu extensions for ##__VA_ARGS__ support within optick profiler (i.e. __STRICT_ANSI__ not set)
